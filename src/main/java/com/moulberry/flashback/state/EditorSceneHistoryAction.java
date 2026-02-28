@@ -9,6 +9,7 @@ import com.google.gson.JsonSerializationContext;
 import com.google.gson.JsonSerializer;
 import com.moulberry.flashback.keyframe.Keyframe;
 import com.moulberry.flashback.keyframe.KeyframeType;
+import com.moulberry.flashback.state.effect.EffectLayer;
 
 import java.lang.reflect.Type;
 
@@ -143,6 +144,88 @@ public interface EditorSceneHistoryAction {
         }
     }
 
+    record AddEffectLayer(int layerIndex, EffectLayer layer) implements EditorSceneHistoryAction {
+        @Override
+        public void apply(EditorScene editorScene) {
+            if (this.layerIndex <= editorScene.effectLayers.size()) {
+                editorScene.effectLayers.add(this.layerIndex, this.layer.copy());
+            }
+        }
+
+        public static class TypeAdapter implements JsonSerializer<AddEffectLayer>, JsonDeserializer<AddEffectLayer> {
+            @Override
+            public AddEffectLayer deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext context) throws JsonParseException {
+                JsonObject jsonObject = json.getAsJsonObject();
+                int layerIndex = jsonObject.get("layerIndex").getAsInt();
+                EffectLayer layer = context.deserialize(jsonObject.get("layer"), EffectLayer.class);
+                return new AddEffectLayer(layerIndex, layer);
+            }
+
+            @Override
+            public JsonElement serialize(AddEffectLayer src, Type typeOfSrc, JsonSerializationContext context) {
+                JsonObject jsonObject = new JsonObject();
+                jsonObject.addProperty("action_type", "add_effect_layer");
+                jsonObject.addProperty("layerIndex", src.layerIndex);
+                jsonObject.add("layer", context.serialize(src.layer, EffectLayer.class));
+                return jsonObject;
+            }
+        }
+    }
+
+    record RemoveEffectLayer(int layerIndex) implements EditorSceneHistoryAction {
+        @Override
+        public void apply(EditorScene editorScene) {
+            if (this.layerIndex < editorScene.effectLayers.size()) {
+                editorScene.effectLayers.remove(this.layerIndex);
+            }
+        }
+
+        public static class TypeAdapter implements JsonSerializer<RemoveEffectLayer>, JsonDeserializer<RemoveEffectLayer> {
+            @Override
+            public RemoveEffectLayer deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext context) throws JsonParseException {
+                JsonObject jsonObject = json.getAsJsonObject();
+                int layerIndex = jsonObject.get("layerIndex").getAsInt();
+                return new RemoveEffectLayer(layerIndex);
+            }
+
+            @Override
+            public JsonElement serialize(RemoveEffectLayer src, Type typeOfSrc, JsonSerializationContext context) {
+                JsonObject jsonObject = new JsonObject();
+                jsonObject.addProperty("action_type", "remove_effect_layer");
+                jsonObject.addProperty("layerIndex", src.layerIndex);
+                return jsonObject;
+            }
+        }
+    }
+
+    record SetEffectLayer(int layerIndex, EffectLayer layer) implements EditorSceneHistoryAction {
+        @Override
+        public void apply(EditorScene editorScene) {
+            if (this.layerIndex < editorScene.effectLayers.size()) {
+                editorScene.effectLayers.set(this.layerIndex, this.layer.copy());
+            }
+        }
+
+        public static class TypeAdapter implements JsonSerializer<SetEffectLayer>, JsonDeserializer<SetEffectLayer> {
+            @Override
+            public SetEffectLayer deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext context) throws JsonParseException {
+                JsonObject jsonObject = json.getAsJsonObject();
+                int layerIndex = jsonObject.get("layerIndex").getAsInt();
+                EffectLayer layer = context.deserialize(jsonObject.get("layer"), EffectLayer.class);
+                return new SetEffectLayer(layerIndex, layer);
+            }
+
+            @Override
+            public JsonElement serialize(SetEffectLayer src, Type typeOfSrc, JsonSerializationContext context) {
+                JsonObject jsonObject = new JsonObject();
+                jsonObject.addProperty("action_type", "set_effect_layer");
+                jsonObject.addProperty("layerIndex", src.layerIndex);
+                jsonObject.add("layer", context.serialize(src.layer, EffectLayer.class));
+                return jsonObject;
+            }
+        }
+    }
+
     class TypeAdapter implements JsonSerializer<EditorSceneHistoryAction>, JsonDeserializer<EditorSceneHistoryAction> {
         @Override
         public EditorSceneHistoryAction deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext context) throws JsonParseException {
@@ -153,6 +236,9 @@ public interface EditorSceneHistoryAction {
                 case "remove_keyframe" -> context.deserialize(json, RemoveKeyframe.class);
                 case "add_track" -> context.deserialize(json, AddTrack.class);
                 case "remove_track" -> context.deserialize(json, RemoveTrack.class);
+                case "add_effect_layer" -> context.deserialize(json, AddEffectLayer.class);
+                case "remove_effect_layer" -> context.deserialize(json, RemoveEffectLayer.class);
+                case "set_effect_layer" -> context.deserialize(json, SetEffectLayer.class);
                 default -> throw new IllegalStateException("Unknown action type: " + type);
             };
         }
@@ -176,6 +262,18 @@ public interface EditorSceneHistoryAction {
                 case RemoveTrack removeTrack -> {
                     jsonObject = (JsonObject) context.serialize(removeTrack);
                     jsonObject.addProperty("action_type", "remove_track");
+                }
+                case AddEffectLayer addEffectLayer -> {
+                    jsonObject = (JsonObject) context.serialize(addEffectLayer);
+                    jsonObject.addProperty("action_type", "add_effect_layer");
+                }
+                case RemoveEffectLayer removeEffectLayer -> {
+                    jsonObject = (JsonObject) context.serialize(removeEffectLayer);
+                    jsonObject.addProperty("action_type", "remove_effect_layer");
+                }
+                case SetEffectLayer setEffectLayer -> {
+                    jsonObject = (JsonObject) context.serialize(setEffectLayer);
+                    jsonObject.addProperty("action_type", "set_effect_layer");
                 }
                 default -> throw new IllegalStateException("Unknown action type: " + src.getClass());
             }

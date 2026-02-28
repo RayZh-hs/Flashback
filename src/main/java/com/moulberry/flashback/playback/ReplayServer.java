@@ -14,6 +14,7 @@ import com.moulberry.flashback.keyframe.Keyframe;
 import com.moulberry.flashback.keyframe.handler.ReplayServerKeyframeHandler;
 import com.moulberry.flashback.keyframe.impl.BlockOverrideKeyframe;
 import com.moulberry.flashback.keyframe.types.BlockOverrideKeyframeType;
+import com.moulberry.flashback.state.effect.BlockEffectManager;
 import com.moulberry.flashback.packet.FlashbackAccurateEntityPosition;
 import com.moulberry.flashback.packet.FlashbackClearEntities;
 import com.moulberry.flashback.packet.FlashbackClearParticles;
@@ -156,6 +157,7 @@ public class ReplayServer extends IntegratedServer {
 
     private record BlockAtPosition(long pos, BlockState blockState) {}
     private List<BlockAtPosition> pendingBlockOverrides = new ArrayList<>();
+    private final BlockEffectManager blockEffectManager = new BlockEffectManager();
 
     private int printFailedDecodePacketCount = 8;
 
@@ -1114,6 +1116,11 @@ public class ReplayServer extends IntegratedServer {
         // Apply block changes
         applyBlockOverridesToTimeline();
 
+        // Apply effect layers (Replace blocks, etc.)
+        for (ServerLevel level : this.getAllLevels()) {
+            this.blockEffectManager.applyEffects(level, this.getEditorState());
+        }
+
         // Teleport entities
         if (!this.isFrozen && !this.needsPositionUpdate.isEmpty()) {
             for (Map.Entry<ResourceKey<Level>, IntSet> entry : this.needsPositionUpdate.entrySet()) {
@@ -1387,6 +1394,7 @@ public class ReplayServer extends IntegratedServer {
 
     private void playSnapshot(ReplayReader replayReader) {
         this.processedSnapshot = true;
+        this.blockEffectManager.invalidate();
 
         this.clearDataForPlayingSnapshot();
         replayReader.handleSnapshot(this);

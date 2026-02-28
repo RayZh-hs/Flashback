@@ -1,6 +1,7 @@
 package com.moulberry.flashback.state;
 
 import com.moulberry.flashback.keyframe.Keyframe;
+import com.moulberry.flashback.state.effect.EffectLayer;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -10,6 +11,7 @@ public class EditorScene {
 
     public String name;
     public final List<KeyframeTrack> keyframeTracks = new ArrayList<>();
+    public final List<EffectLayer> effectLayers = new ArrayList<>();
     public int exportStartTicks = -1;
     public int exportEndTicks = -1;
 

@@ -12,6 +12,10 @@ import com.moulberry.flashback.serialization.QuaternionfTypeAdapater;
 import com.moulberry.flashback.serialization.Vector3dTypeAdapater;
 import com.moulberry.flashback.serialization.Vector3fTypeAdapater;
 import com.moulberry.flashback.state.EditorSceneHistoryAction;
+import com.moulberry.flashback.state.effect.BlockEffect;
+import com.moulberry.flashback.state.effect.BlockEffectLayer;
+import com.moulberry.flashback.state.effect.EffectLayer;
+import com.moulberry.flashback.state.effect.ReplaceEffect;
 import org.joml.Quaterniond;
 import org.joml.Quaternionf;
 import org.joml.Vector3d;
@@ -48,7 +52,15 @@ public class FlashbackGson {
             .registerTypeAdapter(EditorSceneHistoryAction.RemoveKeyframe.class, new EditorSceneHistoryAction.RemoveKeyframe.TypeAdapter())
             .registerTypeAdapter(EditorSceneHistoryAction.AddTrack.class, new EditorSceneHistoryAction.AddTrack.TypeAdapter())
             .registerTypeAdapter(EditorSceneHistoryAction.RemoveTrack.class, new EditorSceneHistoryAction.RemoveTrack.TypeAdapter())
-            .registerTypeAdapter(EditorSceneHistoryAction.class, new EditorSceneHistoryAction.TypeAdapter());
+            .registerTypeAdapter(EditorSceneHistoryAction.AddEffectLayer.class, new EditorSceneHistoryAction.AddEffectLayer.TypeAdapter())
+            .registerTypeAdapter(EditorSceneHistoryAction.RemoveEffectLayer.class, new EditorSceneHistoryAction.RemoveEffectLayer.TypeAdapter())
+            .registerTypeAdapter(EditorSceneHistoryAction.SetEffectLayer.class, new EditorSceneHistoryAction.SetEffectLayer.TypeAdapter())
+            .registerTypeAdapter(EditorSceneHistoryAction.class, new EditorSceneHistoryAction.TypeAdapter())
+
+            .registerTypeAdapter(EffectLayer.class, new EffectLayer.TypeAdapter())
+            .registerTypeAdapter(BlockEffectLayer.class, new BlockEffectLayer.TypeAdapter())
+            .registerTypeAdapter(BlockEffect.class, new BlockEffect.TypeAdapter())
+            .registerTypeAdapter(ReplaceEffect.class, new ReplaceEffect.TypeAdapter());
     }
 
 }

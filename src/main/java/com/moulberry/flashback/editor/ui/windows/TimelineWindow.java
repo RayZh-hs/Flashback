@@ -28,6 +28,10 @@ import com.moulberry.flashback.playback.ReplayServer;
 import com.moulberry.flashback.editor.ui.ImGuiHelper;
 import com.moulberry.flashback.record.FlashbackMeta;
 import com.moulberry.flashback.state.KeyframeTrack;
+import com.moulberry.flashback.state.effect.BlockEffect;
+import com.moulberry.flashback.state.effect.BlockEffectLayer;
+import com.moulberry.flashback.state.effect.EffectLayer;
+import com.moulberry.flashback.state.effect.ReplaceEffect;
 import imgui.moulberry90.ImDrawList;
 import imgui.moulberry90.ImGui;
 import imgui.moulberry90.ImVec4;
@@ -2020,6 +2024,9 @@ public class TimelineWindow {
             }
         }
 
+        // === Render Effect Layers ===
+        renderEffectLayers(lineHeight);
+
         ImGui.setCursorPosX(8);
         if (ImGui.smallButton(I18n.get("flashback.add_element") + "##AddElement")) {
             ImGui.openPopup("##AddKeyframeElement");
@@ -2166,7 +2173,173 @@ public class TimelineWindow {
                     ImGui.closeCurrentPopup();
                 }
             }
+            ImGui.separator();
+            if (ImGui.selectable(I18n.get("flashback.effect_layer.block"))) {
+                upgradeToSceneWrite();
+                List<EditorSceneHistoryAction> undo = new ArrayList<>();
+                List<EditorSceneHistoryAction> redo = new ArrayList<>();
+
+                int index = editorScene.effectLayers.size();
+                BlockEffectLayer newLayer = new BlockEffectLayer(I18n.get("flashback.effect_layer.block") + " " + (index + 1));
+                redo.add(new EditorSceneHistoryAction.AddEffectLayer(index, newLayer));
+                undo.add(new EditorSceneHistoryAction.RemoveEffectLayer(index));
+
+                editorScene.push(new EditorSceneHistoryEntry(undo, redo, I18n.get("flashback.add_effect_layer")));
+                editorState.markDirty();
+                ImGui.closeCurrentPopup();
+            }
             ImGui.endPopup();
+        }
+    }
+
+    private static void renderEffectLayers(float lineHeight) {
+        int effectLayerToDelete = -1;
+
+        for (int layerIndex = 0; layerIndex < editorScene.effectLayers.size(); layerIndex++) {
+            EffectLayer layer = editorScene.effectLayers.get(layerIndex);
+            ImGui.pushID("effect_layer_" + layerIndex);
+
+            // Enabled/Disabled toggle
+            ImGui.setCursorPosX(2);
+            boolean enabled = layer.enabled;
+            if (ImGui.checkbox("##Enabled", enabled)) {
+                upgradeToSceneWrite();
+                EffectLayer oldLayer = layer.copy();
+                layer.enabled = !enabled;
+                EffectLayer newLayer = layer.copy();
+                List<EditorSceneHistoryAction> undo = List.of(new EditorSceneHistoryAction.SetEffectLayer(layerIndex, oldLayer));
+                List<EditorSceneHistoryAction> redo = List.of(new EditorSceneHistoryAction.SetEffectLayer(layerIndex, newLayer));
+                editorScene.push(new EditorSceneHistoryEntry(undo, redo, "Toggle effect layer"));
+                editorState.markDirty();
+            }
+            ImGui.sameLine();
+
+            // Layer name + type icon
+            String displayName = "\ue3a5 " + layer.name; // layer icon
+            int textColour = layer.enabled ? 0xFFFFFFFF : 0xFF808080;
+            ImGui.textColored(textColour, displayName);
+
+            // Right-click context menu
+            if (ImGui.beginPopupContextItem("##EffectLayerContext")) {
+                if (layer instanceof BlockEffectLayer blockEffectLayer) {
+                    if (ImGui.menuItem(I18n.get("flashback.effect.add_replace"))) {
+                        upgradeToSceneWrite();
+                        EffectLayer oldCopy = layer.copy();
+                        blockEffectLayer.effects.add(new ReplaceEffect());
+                        EffectLayer newCopy = layer.copy();
+                        List<EditorSceneHistoryAction> undo = List.of(new EditorSceneHistoryAction.SetEffectLayer(layerIndex, oldCopy));
+                        List<EditorSceneHistoryAction> redo = List.of(new EditorSceneHistoryAction.SetEffectLayer(layerIndex, newCopy));
+                        editorScene.push(new EditorSceneHistoryEntry(undo, redo, I18n.get("flashback.effect.add_replace")));
+                        editorState.markDirty();
+                    }
+                }
+                ImGui.separator();
+                if (ImGui.menuItem(I18n.get("flashback.delete"))) {
+                    effectLayerToDelete = layerIndex;
+                }
+                ImGui.endPopup();
+            }
+
+            // Render sub-entries (effects in the stack) - indented
+            if (layer instanceof BlockEffectLayer blockEffectLayer) {
+                // Show selection text
+                ImGui.setCursorPosX(24);
+                ImGui.textColored(0xFFAAAAAA, I18n.get("flashback.effect_layer.selection") + ": ");
+                ImGui.sameLine();
+
+                ImGui.pushItemWidth(middleX - ImGui.getCursorPosX() - 8);
+                if (blockEffectLayer.selectionEditField == null) {
+                    blockEffectLayer.selectionEditField = ImGuiHelper.createResizableImString(blockEffectLayer.getSelectionText());
+                }
+                if (ImGui.inputText("##Selection_" + layerIndex, blockEffectLayer.selectionEditField)) {
+                    upgradeToSceneWrite();
+                    blockEffectLayer.setSelectionText(ImGuiHelper.getString(blockEffectLayer.selectionEditField));
+                    editorState.markDirty();
+                }
+                ImGui.popItemWidth();
+
+                int effectToDelete = -1;
+                for (int effectIndex = 0; effectIndex < blockEffectLayer.effects.size(); effectIndex++) {
+                    BlockEffect effect = blockEffectLayer.effects.get(effectIndex);
+                    ImGui.pushID("effect_" + effectIndex);
+
+                    ImGui.setCursorPosX(24);
+
+                    // Effect enabled toggle
+                    boolean effectEnabled = effect.enabled;
+                    if (ImGui.checkbox("##EffectEnabled", effectEnabled)) {
+                        upgradeToSceneWrite();
+                        EffectLayer oldCopy = layer.copy();
+                        effect.enabled = !effectEnabled;
+                        EffectLayer newCopy = layer.copy();
+                        List<EditorSceneHistoryAction> undo = List.of(new EditorSceneHistoryAction.SetEffectLayer(layerIndex, oldCopy));
+                        List<EditorSceneHistoryAction> redo = List.of(new EditorSceneHistoryAction.SetEffectLayer(layerIndex, newCopy));
+                        editorScene.push(new EditorSceneHistoryEntry(undo, redo, "Toggle effect"));
+                        editorState.markDirty();
+                    }
+                    ImGui.sameLine();
+
+                    ImGui.textColored(effect.enabled ? 0xFFDDDDDD : 0xFF808080, effect.displayName());
+
+                    // Effect-specific UI
+                    if (effect instanceof ReplaceEffect replaceEffect) {
+                        ImGui.sameLine();
+                        ImGui.pushItemWidth(150);
+                        if (replaceEffect.blockIdEditField == null) {
+                            replaceEffect.blockIdEditField = ImGuiHelper.createResizableImString(replaceEffect.getBlockId());
+                        }
+                        if (ImGui.inputText("##BlockId", replaceEffect.blockIdEditField)) {
+                            upgradeToSceneWrite();
+                            EffectLayer oldCopy = layer.copy();
+                            replaceEffect.setBlockId(ImGuiHelper.getString(replaceEffect.blockIdEditField));
+                            EffectLayer newCopy = layer.copy();
+                            List<EditorSceneHistoryAction> undo = List.of(new EditorSceneHistoryAction.SetEffectLayer(layerIndex, oldCopy));
+                            List<EditorSceneHistoryAction> redo = List.of(new EditorSceneHistoryAction.SetEffectLayer(layerIndex, newCopy));
+                            editorScene.push(new EditorSceneHistoryEntry(undo, redo, "Change replace block"));
+                            editorState.markDirty();
+                        }
+                        ImGui.popItemWidth();
+                    }
+
+                    // Right-click to delete effect
+                    if (ImGui.beginPopupContextItem("##EffectContext")) {
+                        if (ImGui.menuItem(I18n.get("flashback.delete"))) {
+                            effectToDelete = effectIndex;
+                        }
+                        ImGui.endPopup();
+                    }
+
+                    ImGui.popID();
+                }
+
+                if (effectToDelete >= 0 && effectToDelete < blockEffectLayer.effects.size()) {
+                    upgradeToSceneWrite();
+                    EffectLayer oldCopy = layer.copy();
+                    blockEffectLayer.effects.remove(effectToDelete);
+                    EffectLayer newCopy = layer.copy();
+                    List<EditorSceneHistoryAction> undo = List.of(new EditorSceneHistoryAction.SetEffectLayer(layerIndex, oldCopy));
+                    List<EditorSceneHistoryAction> redo = List.of(new EditorSceneHistoryAction.SetEffectLayer(layerIndex, newCopy));
+                    editorScene.push(new EditorSceneHistoryEntry(undo, redo, "Remove effect"));
+                    editorState.markDirty();
+                }
+            }
+
+            ImGui.separator();
+            ImGui.popID();
+        }
+
+        // Delete effect layer
+        if (effectLayerToDelete >= 0 && effectLayerToDelete < editorScene.effectLayers.size()) {
+            upgradeToSceneWrite();
+            List<EditorSceneHistoryAction> undo = new ArrayList<>();
+            List<EditorSceneHistoryAction> redo = new ArrayList<>();
+
+            EffectLayer removedLayer = editorScene.effectLayers.get(effectLayerToDelete);
+            undo.add(new EditorSceneHistoryAction.AddEffectLayer(effectLayerToDelete, removedLayer.copy()));
+            redo.add(new EditorSceneHistoryAction.RemoveEffectLayer(effectLayerToDelete));
+
+            editorScene.push(new EditorSceneHistoryEntry(undo, redo, I18n.get("flashback.delete_effect_layer")));
+            editorState.markDirty();
         }
     }
 
