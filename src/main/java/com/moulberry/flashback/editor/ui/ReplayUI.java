@@ -746,6 +746,22 @@ public class ReplayUI {
                 ImGuiHelper.popStyleVar();
             }
 
+            if (TimelineWindow.hasActiveBlockSelectionTool()) {
+                String blockSelectorText = "Block Selector: LMB append, MMB extend, RMB move, CTRL+LMB minus, ENTER confirm";
+
+                ImGui.setNextWindowPos(frameX + frameWidth*0.5f, frameY + frameHeight - scaleUi(12), ImGuiCond.Always, 0.5f, 1.0f);
+                ImGui.setNextWindowSizeConstraints(0, 0, Math.max(1, frameWidth - scaleUi(24)), frameHeight*0.45f);
+
+                if (ImGui.begin("##BlockSelectorOverlay", ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoFocusOnAppearing |
+                    ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoCollapse |
+                    ImGuiWindowFlags.NoDocking | ImGuiWindowFlags.NoSavedSettings | ImGuiWindowFlags.NoNav |
+                    ImGuiWindowFlags.NoInputs)) {
+
+                    ImGui.textUnformatted(blockSelectorText);
+                }
+                ImGui.end();
+            }
+
             if (sizing == Sizing.UNDERLAY) {
                 frameX = 0;
                 frameY = 0;
