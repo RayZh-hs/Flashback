@@ -6,11 +6,14 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
-import org.jetbrains.annotations.Nullable;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map.Entry;
 import java.util.Map;
 
 /**
@@ -93,24 +96,115 @@ public class BlockEffectManager {
     private void applyReplaceEffect(ServerLevel level, BlockSelection selection, ReplaceEffect replaceEffect) {
         BlockState replacementState = replaceEffect.getBlockState();
 
+        if (selection.isAllBlocks()) {
+            int minY = level.getMinSectionY() << 4;
+            int maxY = (level.getMaxSectionY() << 4) + 16;
+
+            for (Object holder : getChunkHolders(level)) {
+                LevelChunk chunk = resolveChunkFromHolder(holder);
+                if (chunk == null) {
+                    continue;
+                }
+
+                int minX = chunk.getPos().getMinBlockX();
+                int minZ = chunk.getPos().getMinBlockZ();
+                BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
+
+                for (int x = minX; x < minX + 16; x++) {
+                    for (int y = minY; y < maxY; y++) {
+                        for (int z = minZ; z < minZ + 16; z++) {
+                            mutable.set(x, y, z);
+                            applyReplacementAt(level, mutable, replacementState);
+                        }
+                    }
+                }
+            }
+
+            return;
+        }
+
         for (BlockSelection.Region region : selection.getRegions()) {
             for (int x = region.minX(); x <= region.maxX(); x++) {
                 for (int y = region.minY(); y <= region.maxY(); y++) {
                     for (int z = region.minZ(); z <= region.maxZ(); z++) {
-                        BlockPos pos = new BlockPos(x, y, z);
-
-                        // Only save original if we haven't already saved it
-                        if (!originalStates.containsKey(pos)) {
-                            BlockState currentState = level.getBlockState(pos);
-                            originalStates.put(pos, currentState);
-                        }
-
-                        // Set the block without triggering updates (flag 2 = send to clients, no block update)
-                        level.setBlock(pos, replacementState, 2);
+                        applyReplacementAt(level, new BlockPos(x, y, z), replacementState);
                     }
                 }
             }
         }
+    }
+
+    private void applyReplacementAt(ServerLevel level, BlockPos pos, BlockState replacementState) {
+        BlockPos immutablePos = pos.immutable();
+
+        // Only save original if we haven't already saved it
+        if (!originalStates.containsKey(immutablePos)) {
+            BlockState currentState = level.getBlockState(immutablePos);
+            originalStates.put(immutablePos, currentState);
+        }
+
+        // Set the block without triggering updates (flag 2 = send to clients, no block update)
+        level.setBlock(immutablePos, replacementState, 2);
+    }
+
+    private static Iterable<?> getChunkHolders(ServerLevel level) {
+        Object chunkMap = level.getChunkSource().chunkMap;
+
+        try {
+            Method method = chunkMap.getClass().getMethod("getChunks");
+            Object value = method.invoke(chunkMap);
+            if (value instanceof Iterable<?> iterable) {
+                return iterable;
+            }
+        } catch (Exception ignored) {
+        }
+
+        for (String fieldName : new String[] {"visibleChunkMap", "updatingChunkMap"}) {
+            try {
+                Field field = chunkMap.getClass().getDeclaredField(fieldName);
+                field.setAccessible(true);
+                Object value = field.get(chunkMap);
+
+                if (value instanceof Iterable<?> iterable) {
+                    return iterable;
+                }
+                if (value instanceof Map<?, ?> map) {
+                    return map.values();
+                }
+
+                Method valuesMethod = value.getClass().getMethod("values");
+                Object values = valuesMethod.invoke(value);
+                if (values instanceof Iterable<?> iterable) {
+                    return iterable;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+
+        return Collections.emptyList();
+    }
+
+    private static LevelChunk resolveChunkFromHolder(Object holderOrChunk) {
+        if (holderOrChunk instanceof LevelChunk levelChunk) {
+            return levelChunk;
+        }
+
+        if (holderOrChunk instanceof Entry<?, ?> entry && entry.getValue() != null) {
+            return resolveChunkFromHolder(entry.getValue());
+        }
+
+        for (String methodName : new String[] {"getTickingChunk", "getFullChunkNow", "getChunkToSend"}) {
+            try {
+                Method method = holderOrChunk.getClass().getMethod(methodName);
+                Object value = method.invoke(holderOrChunk);
+                if (value instanceof LevelChunk levelChunk) {
+                    return levelChunk;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+
+        return null;
     }
 
     /**

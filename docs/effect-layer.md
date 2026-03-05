@@ -12,6 +12,7 @@ A block effect layer applies effects to blocks in the world. It has the followin
   - `x1,y1,z1,x2,y2,z2`: A cuboid region with two opposite corners at (x1, y1, z1) and (x2, y2, z2).
   - `x,y,z`: A single block region at (x, y, z).
   - `selection1:selection2:...`: A union of multiple regions. By definition, regions can be either a cuboid or single block.
+  - `*`: The entire world (all the blocks).
 
   The block selection tool works as a visual aid for users to select blocks in the world, yielding the > corresponding selection text. Users use:
   - Left click to select a region. Clicking will highlight the selected region.

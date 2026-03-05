@@ -30,6 +30,7 @@ import com.moulberry.flashback.record.FlashbackMeta;
 import com.moulberry.flashback.state.KeyframeTrack;
 import com.moulberry.flashback.state.effect.BlockEffect;
 import com.moulberry.flashback.state.effect.BlockEffectLayer;
+import com.moulberry.flashback.state.effect.BlockSelection;
 import com.moulberry.flashback.state.effect.EffectLayer;
 import com.moulberry.flashback.state.effect.ReplaceEffect;
 import imgui.moulberry90.ImDrawList;
@@ -52,6 +53,7 @@ import net.minecraft.client.input.InputQuirks;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.commands.arguments.EntityAnchorArgument;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector2f;
@@ -141,10 +143,150 @@ public class TimelineWindow {
     private static int createKeyframeAtTick = 0;
     private static int openCreateKeyframeAtTickTrack = -1;
 
+    private static int activeBlockSelectionToolLayer = -1;
+    private static int activeBlockSelectionRegion = -1;
+
     private static final float[] replayTickSpeeds = new float[]{1.0f, 2.0f, 4.0f, 10.0f, 20.0f, 40.0f, 100.0f, 200.0f, 400.0f};
 
     public static int getCursorTick() {
         return cursorTicks;
+    }
+
+    public static boolean hasActiveBlockSelectionTool() {
+        return activeBlockSelectionToolLayer >= 0;
+    }
+
+    public static boolean handleBlockSelectionDelete() {
+        EditorState currentEditorState = EditorStateManager.getCurrent();
+        if (currentEditorState == null || activeBlockSelectionToolLayer < 0) {
+            return false;
+        }
+
+        long stamp = currentEditorState.acquireWrite();
+        try {
+            EditorScene scene = currentEditorState.getCurrentScene(stamp);
+            if (activeBlockSelectionToolLayer >= scene.effectLayers.size()) {
+                activeBlockSelectionToolLayer = -1;
+                activeBlockSelectionRegion = -1;
+                return false;
+            }
+
+            EffectLayer effectLayer = scene.effectLayers.get(activeBlockSelectionToolLayer);
+            if (!(effectLayer instanceof BlockEffectLayer blockEffectLayer)) {
+                activeBlockSelectionToolLayer = -1;
+                activeBlockSelectionRegion = -1;
+                return false;
+            }
+
+            BlockSelection selection = blockEffectLayer.getSelection();
+            List<BlockSelection.Region> regions = new ArrayList<>(selection.getRegions());
+            if (activeBlockSelectionRegion < 0 || activeBlockSelectionRegion >= regions.size()) {
+                return false;
+            }
+
+            regions.remove(activeBlockSelectionRegion);
+            if (regions.isEmpty()) {
+                activeBlockSelectionRegion = -1;
+            } else if (activeBlockSelectionRegion >= regions.size()) {
+                activeBlockSelectionRegion = regions.size() - 1;
+            }
+
+            blockEffectLayer.setSelectionText(BlockSelection.toSelectionString(regions));
+            if (blockEffectLayer.selectionEditField != null) {
+                blockEffectLayer.selectionEditField.set(blockEffectLayer.getSelectionText());
+            }
+
+            currentEditorState.markDirty();
+            return true;
+        } finally {
+            currentEditorState.release(stamp);
+        }
+    }
+
+    public static boolean handleBlockSelectionClick(BlockPos blockPos, int mouseButton) {
+        EditorState currentEditorState = EditorStateManager.getCurrent();
+        if (currentEditorState == null || activeBlockSelectionToolLayer < 0) {
+            return false;
+        }
+
+        long stamp = currentEditorState.acquireWrite();
+        try {
+            EditorScene scene = currentEditorState.getCurrentScene(stamp);
+            if (activeBlockSelectionToolLayer >= scene.effectLayers.size()) {
+                activeBlockSelectionToolLayer = -1;
+                activeBlockSelectionRegion = -1;
+                return false;
+            }
+
+            EffectLayer effectLayer = scene.effectLayers.get(activeBlockSelectionToolLayer);
+            if (!(effectLayer instanceof BlockEffectLayer blockEffectLayer)) {
+                activeBlockSelectionToolLayer = -1;
+                activeBlockSelectionRegion = -1;
+                return false;
+            }
+
+            BlockSelection selection = blockEffectLayer.getSelection();
+            if (selection.isAllBlocks()) {
+                activeBlockSelectionRegion = -1;
+                return false;
+            }
+
+            List<BlockSelection.Region> regions = new ArrayList<>(selection.getRegions());
+            boolean changed = false;
+
+            if (mouseButton == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+                int clickedRegion = -1;
+                for (int i = 0; i < regions.size(); i++) {
+                    if (regions.get(i).contains(blockPos.getX(), blockPos.getY(), blockPos.getZ())) {
+                        clickedRegion = i;
+                        break;
+                    }
+                }
+
+                if (clickedRegion >= 0) {
+                    activeBlockSelectionRegion = clickedRegion;
+                } else {
+                    regions.add(new BlockSelection.Region(blockPos.getX(), blockPos.getY(), blockPos.getZ(), blockPos.getX(), blockPos.getY(), blockPos.getZ()));
+                    activeBlockSelectionRegion = regions.size() - 1;
+                    changed = true;
+                }
+            } else if (mouseButton == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
+                regions.add(new BlockSelection.Region(blockPos.getX(), blockPos.getY(), blockPos.getZ(), blockPos.getX(), blockPos.getY(), blockPos.getZ()));
+                activeBlockSelectionRegion = regions.size() - 1;
+                changed = true;
+            } else if (mouseButton == GLFW.GLFW_MOUSE_BUTTON_MIDDLE) {
+                if (activeBlockSelectionRegion < 0 || activeBlockSelectionRegion >= regions.size()) {
+                    regions.add(new BlockSelection.Region(blockPos.getX(), blockPos.getY(), blockPos.getZ(), blockPos.getX(), blockPos.getY(), blockPos.getZ()));
+                    activeBlockSelectionRegion = regions.size() - 1;
+                    changed = true;
+                } else {
+                    BlockSelection.Region region = regions.get(activeBlockSelectionRegion);
+                    regions.set(activeBlockSelectionRegion, new BlockSelection.Region(
+                        Math.min(region.minX(), blockPos.getX()),
+                        Math.min(region.minY(), blockPos.getY()),
+                        Math.min(region.minZ(), blockPos.getZ()),
+                        Math.max(region.maxX(), blockPos.getX()),
+                        Math.max(region.maxY(), blockPos.getY()),
+                        Math.max(region.maxZ(), blockPos.getZ())
+                    ));
+                    changed = true;
+                }
+            }
+
+            if (!changed) {
+                return mouseButton == GLFW.GLFW_MOUSE_BUTTON_LEFT;
+            }
+
+            blockEffectLayer.setSelectionText(BlockSelection.toSelectionString(regions));
+            if (blockEffectLayer.selectionEditField != null) {
+                blockEffectLayer.selectionEditField.set(blockEffectLayer.getSelectionText());
+            }
+
+            currentEditorState.markDirty();
+            return true;
+        } finally {
+            currentEditorState.release(stamp);
+        }
     }
 
     public static void render() {
@@ -2215,7 +2357,7 @@ public class TimelineWindow {
             ImGui.sameLine();
 
             // Layer name + type icon
-            String displayName = "\ue3a5 " + layer.name; // layer icon
+            String displayName = layer.name;
             int textColour = layer.enabled ? 0xFFFFFFFF : 0xFF808080;
             ImGui.textColored(textColour, displayName);
 
@@ -2247,6 +2389,22 @@ public class TimelineWindow {
                 ImGui.textColored(0xFFAAAAAA, I18n.get("flashback.effect_layer.selection") + ": ");
                 ImGui.sameLine();
 
+                boolean toolEnabled = activeBlockSelectionToolLayer == layerIndex;
+                if (ImGui.smallButton(toolEnabled ? "Picking" : "Pick")) {
+                    if (toolEnabled) {
+                        activeBlockSelectionToolLayer = -1;
+                        activeBlockSelectionRegion = -1;
+                    } else {
+                        activeBlockSelectionToolLayer = layerIndex;
+                        BlockSelection selection = blockEffectLayer.getSelection();
+                        activeBlockSelectionRegion = selection.getRegions().isEmpty() ? -1 : 0;
+                    }
+                }
+                if (ImGui.isItemHovered()) {
+                    ImGui.setTooltip("Use world clicks: left select/create, right add, middle extend, delete remove");
+                }
+                ImGui.sameLine();
+
                 ImGui.pushItemWidth(middleX - ImGui.getCursorPosX() - 8);
                 if (blockEffectLayer.selectionEditField == null) {
                     blockEffectLayer.selectionEditField = ImGuiHelper.createResizableImString(blockEffectLayer.getSelectionText());
@@ -2254,6 +2412,9 @@ public class TimelineWindow {
                 if (ImGui.inputText("##Selection_" + layerIndex, blockEffectLayer.selectionEditField)) {
                     upgradeToSceneWrite();
                     blockEffectLayer.setSelectionText(ImGuiHelper.getString(blockEffectLayer.selectionEditField));
+                    if ("*".equals(blockEffectLayer.getSelectionText().trim())) {
+                        activeBlockSelectionRegion = -1;
+                    }
                     editorState.markDirty();
                 }
                 ImGui.popItemWidth();
@@ -2333,6 +2494,13 @@ public class TimelineWindow {
             upgradeToSceneWrite();
             List<EditorSceneHistoryAction> undo = new ArrayList<>();
             List<EditorSceneHistoryAction> redo = new ArrayList<>();
+
+            if (activeBlockSelectionToolLayer == effectLayerToDelete) {
+                activeBlockSelectionToolLayer = -1;
+                activeBlockSelectionRegion = -1;
+            } else if (activeBlockSelectionToolLayer > effectLayerToDelete) {
+                activeBlockSelectionToolLayer -= 1;
+            }
 
             EffectLayer removedLayer = editorScene.effectLayers.get(effectLayerToDelete);
             undo.add(new EditorSceneHistoryAction.AddEffectLayer(effectLayerToDelete, removedLayer.copy()));

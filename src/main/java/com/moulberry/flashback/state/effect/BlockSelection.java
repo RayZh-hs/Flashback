@@ -17,10 +17,16 @@ public class BlockSelection {
 
     private final String raw;
     private final List<Region> regions;
+    private final boolean allBlocks;
 
     public BlockSelection(String raw, List<Region> regions) {
+        this(raw, regions, false);
+    }
+
+    public BlockSelection(String raw, List<Region> regions, boolean allBlocks) {
         this.raw = raw;
         this.regions = Collections.unmodifiableList(regions);
+        this.allBlocks = allBlocks;
     }
 
     public String getRaw() {
@@ -31,10 +37,17 @@ public class BlockSelection {
         return this.regions;
     }
 
+    public boolean isAllBlocks() {
+        return this.allBlocks;
+    }
+
     /**
      * Check if a block position is contained within this selection.
      */
     public boolean contains(BlockPos pos) {
+        if (this.allBlocks) {
+            return true;
+        }
         for (Region region : this.regions) {
             if (region.contains(pos.getX(), pos.getY(), pos.getZ())) {
                 return true;
@@ -44,6 +57,9 @@ public class BlockSelection {
     }
 
     public boolean contains(int x, int y, int z) {
+        if (this.allBlocks) {
+            return true;
+        }
         for (Region region : this.regions) {
             if (region.contains(x, y, z)) {
                 return true;
@@ -56,7 +72,7 @@ public class BlockSelection {
      * Returns true if this selection is empty (no regions).
      */
     public boolean isEmpty() {
-        return this.regions.isEmpty();
+        return !this.allBlocks && this.regions.isEmpty();
     }
 
     /**
@@ -69,6 +85,10 @@ public class BlockSelection {
         }
 
         text = text.trim();
+        if ("*".equals(text)) {
+            return new BlockSelection("*", Collections.emptyList(), true);
+        }
+
         List<Region> regions = new ArrayList<>();
         String[] parts = text.split(":");
 
@@ -86,6 +106,21 @@ public class BlockSelection {
     }
 
     private static Region parseRegion(String part) {
+        // Try docs cuboid syntax: x1,y1,z1,x2,y2,z2
+        int[] sixCoords = parseCoordList(part, 6);
+        if (sixCoords != null) {
+            return new Region(
+                Math.min(sixCoords[0], sixCoords[3]), Math.min(sixCoords[1], sixCoords[4]), Math.min(sixCoords[2], sixCoords[5]),
+                Math.max(sixCoords[0], sixCoords[3]), Math.max(sixCoords[1], sixCoords[4]), Math.max(sixCoords[2], sixCoords[5])
+            );
+        }
+
+        // Try docs single-block syntax: x,y,z
+        int[] singleCoords = parseCoordList(part, 3);
+        if (singleCoords != null) {
+            return new Region(singleCoords[0], singleCoords[1], singleCoords[2], singleCoords[0], singleCoords[1], singleCoords[2]);
+        }
+
         // Try cuboid: <x1,y1,z1>-<x2,y2,z2>
         int dashIndex = findDashBetweenBrackets(part);
         if (dashIndex >= 0) {
@@ -140,16 +175,21 @@ public class BlockSelection {
             return null;
         }
         s = s.substring(1, s.length() - 1);
+        return parseCoordList(s, 3);
+    }
+
+    private static int[] parseCoordList(String s, int expectedSize) {
         String[] parts = s.split(",");
-        if (parts.length != 3) {
+        if (parts.length != expectedSize) {
             return null;
         }
+
+        int[] parsed = new int[expectedSize];
         try {
-            return new int[] {
-                Integer.parseInt(parts[0].trim()),
-                Integer.parseInt(parts[1].trim()),
-                Integer.parseInt(parts[2].trim())
-            };
+            for (int i = 0; i < expectedSize; i++) {
+                parsed[i] = Integer.parseInt(parts[i].trim());
+            }
+            return parsed;
         } catch (NumberFormatException e) {
             return null;
         }
@@ -164,11 +204,10 @@ public class BlockSelection {
             if (i > 0) sb.append(":");
             Region r = regions.get(i);
             if (r.minX == r.maxX && r.minY == r.maxY && r.minZ == r.maxZ) {
-                sb.append("<").append(r.minX).append(",").append(r.minY).append(",").append(r.minZ).append(">");
+                sb.append(r.minX).append(",").append(r.minY).append(",").append(r.minZ);
             } else {
-                sb.append("<").append(r.minX).append(",").append(r.minY).append(",").append(r.minZ).append(">");
-                sb.append("-");
-                sb.append("<").append(r.maxX).append(",").append(r.maxY).append(",").append(r.maxZ).append(">");
+                sb.append(r.minX).append(",").append(r.minY).append(",").append(r.minZ).append(",")
+                    .append(r.maxX).append(",").append(r.maxY).append(",").append(r.maxZ);
             }
         }
         return sb.toString();

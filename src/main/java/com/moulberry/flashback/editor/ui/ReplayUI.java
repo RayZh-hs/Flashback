@@ -947,6 +947,34 @@ public class ReplayUI {
     }
 
     private static void handleBasicInputs() {
+        if (TimelineWindow.hasActiveBlockSelectionTool()) {
+            if (ImGui.isKeyPressed(GLFW.GLFW_KEY_DELETE, false) || ImGui.isKeyPressed(GLFW.GLFW_KEY_BACKSPACE, false)) {
+                if (TimelineWindow.handleBlockSelectionDelete()) {
+                    return;
+                }
+            }
+
+            if (ImGui.isMouseClicked(GLFW.GLFW_MOUSE_BUTTON_LEFT) || ImGui.isMouseClicked(GLFW.GLFW_MOUSE_BUTTON_RIGHT) || ImGui.isMouseClicked(GLFW.GLFW_MOUSE_BUTTON_MIDDLE)) {
+                int mouseButton;
+                if (ImGui.isMouseClicked(GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
+                    mouseButton = GLFW.GLFW_MOUSE_BUTTON_LEFT;
+                } else if (ImGui.isMouseClicked(GLFW.GLFW_MOUSE_BUTTON_RIGHT)) {
+                    mouseButton = GLFW.GLFW_MOUSE_BUTTON_RIGHT;
+                } else {
+                    mouseButton = GLFW.GLFW_MOUSE_BUTTON_MIDDLE;
+                }
+
+                HitResult result = getLookTarget();
+                if (result instanceof BlockHitResult blockHitResult) {
+                    if (TimelineWindow.handleBlockSelectionClick(blockHitResult.getBlockPos(), mouseButton)) {
+                        return;
+                    }
+                } else if (mouseButton != GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+                    return;
+                }
+            }
+        }
+
         if (ImGui.isMouseClicked(GLFW.GLFW_MOUSE_BUTTON_RIGHT)) {
             HitResult result = getLookTarget();
             if (result instanceof EntityHitResult entityHitResult) {
