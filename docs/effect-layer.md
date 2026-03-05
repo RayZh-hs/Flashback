@@ -9,8 +9,13 @@ Effect layers can be added to the time line.
 A block effect layer applies effects to blocks in the world. It has the following default properties:
 
 - **Selection**: A [Block Selection](selection.md) that specifies the blocks to apply the effects to, default: none. Comes with a [Block Selection Tool](tool.md) for visual aid.
+- **Negate Selection**: Inverts the selected set (`* - (selection)`), default: false.
 
 There will be a toggle button for "Include Air" for Block Effect Layers, default: false. When enabled, the selection will include air blocks, allowing effects to be applied to air blocks as well. If the toggle is off, an external `(...)[!air]` filter will be added around the selection text, ensuring that air blocks are not included in the selection.
+
+Evaluation order is:
+1. Apply negation if enabled (`* - (selection)`).
+2. Apply air mask if Include Air is disabled (`(...)[!air]`).
 
 Effects can be applied to the selected blocks as a stack. The effects include:
 - **Opacity**: Adjusting the opacity of the selected blocks. Type: Float, Range: [0, 1], Default: 1.

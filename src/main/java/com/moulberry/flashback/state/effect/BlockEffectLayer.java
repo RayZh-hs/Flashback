@@ -18,6 +18,7 @@ import java.util.List;
 public class BlockEffectLayer extends EffectLayer {
 
     private String selectionText = "";
+    private boolean negateSelection = false;
     private boolean includeAir = false;
     private transient BlockSelection cachedSelection = null;
     private transient String cachedSelectionText = null;
@@ -44,6 +45,18 @@ public class BlockEffectLayer extends EffectLayer {
         return this.includeAir;
     }
 
+    public boolean isNegateSelection() {
+        return this.negateSelection;
+    }
+
+    public void setNegateSelection(boolean negateSelection) {
+        if (this.negateSelection != negateSelection) {
+            this.negateSelection = negateSelection;
+            this.cachedSelection = null;
+            this.cachedSelectionText = null;
+        }
+    }
+
     public void setIncludeAir(boolean includeAir) {
         if (this.includeAir != includeAir) {
             this.includeAir = includeAir;
@@ -53,15 +66,26 @@ public class BlockEffectLayer extends EffectLayer {
     }
 
     private String getEffectiveSelectionText() {
-        if (this.selectionText == null || this.selectionText.isBlank()) {
+        String selection = this.selectionText == null ? "" : this.selectionText.trim();
+        String effectiveSelection;
+
+        if (selection.isBlank()) {
+            effectiveSelection = this.negateSelection ? "*" : "";
+        } else if (this.negateSelection) {
+            effectiveSelection = "* - (" + selection + ")";
+        } else {
+            effectiveSelection = selection;
+        }
+
+        if (effectiveSelection.isBlank()) {
             return "";
         }
 
         if (this.includeAir) {
-            return this.selectionText;
+            return effectiveSelection;
         }
 
-        return "(" + this.selectionText + ")[!air]";
+        return "(" + effectiveSelection + ")[!air]";
     }
 
     /**
@@ -91,6 +115,7 @@ public class BlockEffectLayer extends EffectLayer {
         BlockEffectLayer copy = new BlockEffectLayer(this.name);
         copy.enabled = this.enabled;
         copy.selectionText = this.selectionText;
+        copy.negateSelection = this.negateSelection;
         copy.includeAir = this.includeAir;
         for (BlockEffect effect : this.effects) {
             copy.effects.add(effect.copy());
@@ -107,6 +132,9 @@ public class BlockEffectLayer extends EffectLayer {
 
             if (jsonObject.has("selection")) {
                 layer.selectionText = jsonObject.get("selection").getAsString();
+            }
+            if (jsonObject.has("negate_selection")) {
+                layer.negateSelection = jsonObject.get("negate_selection").getAsBoolean();
             }
             if (jsonObject.has("include_air")) {
                 layer.includeAir = jsonObject.get("include_air").getAsBoolean();
@@ -127,6 +155,7 @@ public class BlockEffectLayer extends EffectLayer {
         public JsonElement serialize(BlockEffectLayer src, Type typeOfSrc, JsonSerializationContext context) {
             JsonObject jsonObject = new JsonObject();
             jsonObject.addProperty("selection", src.selectionText);
+            jsonObject.addProperty("negate_selection", src.negateSelection);
             jsonObject.addProperty("include_air", src.includeAir);
 
             JsonArray effectsArray = new JsonArray();

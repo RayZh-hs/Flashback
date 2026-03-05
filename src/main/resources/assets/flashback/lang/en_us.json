@@ -444,6 +444,7 @@
 
   "flashback.effect_layer.block": "Block Effect Layer",
   "flashback.effect_layer.selection": "Selection",
+  "flashback.effect_layer.negate_selection": "Negate Selection",
   "flashback.effect_layer.include_air": "Include Air",
   "flashback.effect.opacity": "Opacity",
   "flashback.effect.translate": "Translate",

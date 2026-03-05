@@ -2477,6 +2477,19 @@ public class TimelineWindow {
                 ImGui.popItemWidth();
 
                 ImGui.setCursorPosX(24);
+                boolean negateSelection = blockEffectLayer.isNegateSelection();
+                if (ImGui.checkbox(I18n.get("flashback.effect_layer.negate_selection") + "##NegateSelection_" + layerIndex, negateSelection)) {
+                    upgradeToSceneWrite();
+                    EffectLayer oldCopy = layer.copy();
+                    blockEffectLayer.setNegateSelection(!negateSelection);
+                    EffectLayer newCopy = layer.copy();
+                    List<EditorSceneHistoryAction> undo = List.of(new EditorSceneHistoryAction.SetEffectLayer(layerIndex, oldCopy));
+                    List<EditorSceneHistoryAction> redo = List.of(new EditorSceneHistoryAction.SetEffectLayer(layerIndex, newCopy));
+                    editorScene.push(new EditorSceneHistoryEntry(undo, redo, "Toggle negate selection"));
+                    editorState.markDirty();
+                }
+
+                ImGui.setCursorPosX(24);
                 boolean includeAir = blockEffectLayer.isIncludeAir();
                 if (ImGui.checkbox(I18n.get("flashback.effect_layer.include_air") + "##IncludeAir_" + layerIndex, includeAir)) {
                     upgradeToSceneWrite();
