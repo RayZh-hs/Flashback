@@ -2452,7 +2452,7 @@ public class TimelineWindow {
                     }
                 }
                 if (ImGui.isItemHovered()) {
-                    ImGui.setTooltip("LMB append, MMB extend, CTRL+LMB minus, ENTER confirm, ALT navigate");
+                    ImGui.setTooltip("LMB append, MMB extend, RMB move, CTRL+LMB minus, ENTER confirm");
                 }
                 ImGui.sameLine();
 

@@ -629,6 +629,14 @@ public class ReplayUI {
 
         MainMenuBar.render();
 
+        if (TimelineWindow.hasActiveBlockSelectionTool()) {
+            boolean pressedEnter = ImGui.isKeyPressed(ImGuiKey.Enter) || ImGui.isKeyPressed(ImGuiKey.KeypadEnter);
+            boolean pressedDelete = ImGui.isKeyPressed(ImGuiKey.Delete) || ImGui.isKeyPressed(ImGuiKey.Backspace);
+            if (pressedEnter || pressedDelete) {
+                handleBasicInputs();
+            }
+        }
+
         // The main menu bar can disconnect us, so make sure to check if the UI should still be active here
         if (!isActiveInternal()) {
             ImGui.render();
@@ -969,19 +977,18 @@ public class ReplayUI {
 
     private static void handleBasicInputs() {
         if (TimelineWindow.hasActiveBlockSelectionTool()) {
-            if (ImGui.isKeyPressed(GLFW.GLFW_KEY_ENTER, false) || ImGui.isKeyPressed(GLFW.GLFW_KEY_KP_ENTER, false)) {
+            if (ImGui.isKeyPressed(ImGuiKey.Enter) || ImGui.isKeyPressed(ImGuiKey.KeypadEnter)) {
                 TimelineWindow.confirmBlockSelectionTool();
                 return;
             }
 
-            if (ImGui.isKeyPressed(GLFW.GLFW_KEY_DELETE, false) || ImGui.isKeyPressed(GLFW.GLFW_KEY_BACKSPACE, false)) {
+            if (ImGui.isKeyPressed(ImGuiKey.Delete) || ImGui.isKeyPressed(ImGuiKey.Backspace)) {
                 if (TimelineWindow.handleBlockSelectionDelete()) {
                     return;
                 }
             }
 
-            boolean altDown = ImGui.isKeyDown(GLFW.GLFW_KEY_LEFT_ALT) || ImGui.isKeyDown(GLFW.GLFW_KEY_RIGHT_ALT);
-            if (!altDown && (ImGui.isMouseClicked(GLFW.GLFW_MOUSE_BUTTON_LEFT) || ImGui.isMouseClicked(GLFW.GLFW_MOUSE_BUTTON_MIDDLE))) {
+            if (ImGui.isMouseClicked(GLFW.GLFW_MOUSE_BUTTON_LEFT) || ImGui.isMouseClicked(GLFW.GLFW_MOUSE_BUTTON_MIDDLE)) {
                 int mouseButton;
                 if (ImGui.isMouseClicked(GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
                     mouseButton = GLFW.GLFW_MOUSE_BUTTON_LEFT;
@@ -997,6 +1004,12 @@ public class ReplayUI {
                 } else {
                     return;
                 }
+            }
+
+            if (ImGui.isMouseClicked(GLFW.GLFW_MOUSE_BUTTON_RIGHT)) {
+                int key = -GLFW.GLFW_MOUSE_BUTTON_RIGHT - 1;
+                imguiGlfw.setGrabbed(true, key, true, frameX + frameWidth / 2f, frameY + frameHeight / 2f);
+                return;
             }
         }
 
