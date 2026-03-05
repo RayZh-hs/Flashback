@@ -37,6 +37,8 @@ public abstract class BlockEffect {
             String type = jsonObject.get("effect_type").getAsString();
             BlockEffect effect = switch (type) {
                 case "replace" -> context.deserialize(json, ReplaceEffect.class);
+                case "opacity" -> context.deserialize(json, OpacityEffect.class);
+                case "translate" -> context.deserialize(json, TranslateEffect.class);
                 default -> throw new IllegalStateException("Unknown block effect type: " + type);
             };
             if (jsonObject.has("enabled")) {
@@ -51,6 +53,12 @@ public abstract class BlockEffect {
             switch (src) {
                 case ReplaceEffect replaceEffect -> {
                     jsonObject = (JsonObject) context.serialize(replaceEffect, ReplaceEffect.class);
+                }
+                case OpacityEffect opacityEffect -> {
+                    jsonObject = (JsonObject) context.serialize(opacityEffect, OpacityEffect.class);
+                }
+                case TranslateEffect translateEffect -> {
+                    jsonObject = (JsonObject) context.serialize(translateEffect, TranslateEffect.class);
                 }
                 default -> throw new IllegalStateException("Unknown block effect type: " + src.getClass());
             }

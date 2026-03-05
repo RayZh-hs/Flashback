@@ -18,6 +18,7 @@ import java.util.List;
 public class BlockEffectLayer extends EffectLayer {
 
     private String selectionText = "";
+    private boolean includeAir = false;
     private transient BlockSelection cachedSelection = null;
     private transient String cachedSelectionText = null;
 
@@ -39,13 +40,38 @@ public class BlockEffectLayer extends EffectLayer {
         this.cachedSelectionText = null;
     }
 
+    public boolean isIncludeAir() {
+        return this.includeAir;
+    }
+
+    public void setIncludeAir(boolean includeAir) {
+        if (this.includeAir != includeAir) {
+            this.includeAir = includeAir;
+            this.cachedSelection = null;
+            this.cachedSelectionText = null;
+        }
+    }
+
+    private String getEffectiveSelectionText() {
+        if (this.selectionText == null || this.selectionText.isBlank()) {
+            return "";
+        }
+
+        if (this.includeAir) {
+            return this.selectionText;
+        }
+
+        return "(" + this.selectionText + ")[!air]";
+    }
+
     /**
      * Get the parsed selection. Cached until the text changes.
      */
     public BlockSelection getSelection() {
-        if (this.cachedSelection == null || !this.selectionText.equals(this.cachedSelectionText)) {
-            this.cachedSelection = BlockSelection.parse(this.selectionText);
-            this.cachedSelectionText = this.selectionText;
+        String effectiveSelectionText = this.getEffectiveSelectionText();
+        if (this.cachedSelection == null || !effectiveSelectionText.equals(this.cachedSelectionText)) {
+            this.cachedSelection = BlockSelection.parse(effectiveSelectionText);
+            this.cachedSelectionText = effectiveSelectionText;
         }
         return this.cachedSelection;
     }
@@ -65,6 +91,7 @@ public class BlockEffectLayer extends EffectLayer {
         BlockEffectLayer copy = new BlockEffectLayer(this.name);
         copy.enabled = this.enabled;
         copy.selectionText = this.selectionText;
+        copy.includeAir = this.includeAir;
         for (BlockEffect effect : this.effects) {
             copy.effects.add(effect.copy());
         }
@@ -80,6 +107,9 @@ public class BlockEffectLayer extends EffectLayer {
 
             if (jsonObject.has("selection")) {
                 layer.selectionText = jsonObject.get("selection").getAsString();
+            }
+            if (jsonObject.has("include_air")) {
+                layer.includeAir = jsonObject.get("include_air").getAsBoolean();
             }
 
             if (jsonObject.has("effects")) {
@@ -97,6 +127,7 @@ public class BlockEffectLayer extends EffectLayer {
         public JsonElement serialize(BlockEffectLayer src, Type typeOfSrc, JsonSerializationContext context) {
             JsonObject jsonObject = new JsonObject();
             jsonObject.addProperty("selection", src.selectionText);
+            jsonObject.addProperty("include_air", src.includeAir);
 
             JsonArray effectsArray = new JsonArray();
             for (BlockEffect effect : src.effects) {

@@ -15,7 +15,9 @@ import com.moulberry.flashback.state.EditorSceneHistoryAction;
 import com.moulberry.flashback.state.effect.BlockEffect;
 import com.moulberry.flashback.state.effect.BlockEffectLayer;
 import com.moulberry.flashback.state.effect.EffectLayer;
+import com.moulberry.flashback.state.effect.OpacityEffect;
 import com.moulberry.flashback.state.effect.ReplaceEffect;
+import com.moulberry.flashback.state.effect.TranslateEffect;
 import org.joml.Quaterniond;
 import org.joml.Quaternionf;
 import org.joml.Vector3d;
@@ -60,7 +62,9 @@ public class FlashbackGson {
             .registerTypeAdapter(EffectLayer.class, new EffectLayer.TypeAdapter())
             .registerTypeAdapter(BlockEffectLayer.class, new BlockEffectLayer.TypeAdapter())
             .registerTypeAdapter(BlockEffect.class, new BlockEffect.TypeAdapter())
-            .registerTypeAdapter(ReplaceEffect.class, new ReplaceEffect.TypeAdapter());
+                .registerTypeAdapter(ReplaceEffect.class, new ReplaceEffect.TypeAdapter())
+                .registerTypeAdapter(OpacityEffect.class, new OpacityEffect.TypeAdapter())
+                .registerTypeAdapter(TranslateEffect.class, new TranslateEffect.TypeAdapter());
     }
 
 }

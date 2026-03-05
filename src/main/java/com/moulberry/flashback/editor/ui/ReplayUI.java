@@ -1,27 +1,58 @@
 package com.moulberry.flashback.editor.ui;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Locale;
+import java.util.MissingResourceException;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
+
+import org.jetbrains.annotations.Nullable;
+import org.joml.Matrix4f;
+import org.joml.Quaternionf;
+import org.joml.Vector4f;
+import org.lwjgl.glfw.GLFW;
+
 import com.mojang.blaze3d.opengl.GlStateManager;
 import com.mojang.blaze3d.platform.Window;
 import com.moulberry.flashback.Flashback;
+import com.moulberry.flashback.combo_options.Sizing;
 import com.moulberry.flashback.configuration.FlashbackConfigV1;
 import com.moulberry.flashback.editor.ui.windows.ExportDoneWindow;
 import com.moulberry.flashback.editor.ui.windows.ExportQueueWindow;
 import com.moulberry.flashback.editor.ui.windows.ExportScreenshotWindow;
+import com.moulberry.flashback.editor.ui.windows.MainMenuBar;
 import com.moulberry.flashback.editor.ui.windows.PreferencesWindow;
 import com.moulberry.flashback.editor.ui.windows.SelectedEntityPopup;
+import com.moulberry.flashback.editor.ui.windows.StartExportWindow;
+import com.moulberry.flashback.editor.ui.windows.TimelineWindow;
+import com.moulberry.flashback.editor.ui.windows.VisualsWindow;
 import com.moulberry.flashback.editor.ui.windows.WindowType;
 import com.moulberry.flashback.playback.ReplayServer;
 import com.moulberry.flashback.state.EditorState;
 import com.moulberry.flashback.state.EditorStateManager;
-import com.moulberry.flashback.combo_options.Sizing;
-import com.moulberry.flashback.editor.ui.windows.MainMenuBar;
-import com.moulberry.flashback.editor.ui.windows.StartExportWindow;
-import com.moulberry.flashback.editor.ui.windows.TimelineWindow;
-import com.moulberry.flashback.editor.ui.windows.VisualsWindow;
-import imgui.moulberry90.*;
-import imgui.moulberry90.flag.*;
+
+import imgui.moulberry90.ImDrawList;
+import imgui.moulberry90.ImFont;
+import imgui.moulberry90.ImFontAtlas;
+import imgui.moulberry90.ImFontConfig;
+import imgui.moulberry90.ImFontGlyphRangesBuilder;
+import imgui.moulberry90.ImGui;
+import imgui.moulberry90.ImGuiIO;
+import imgui.moulberry90.ImGuiViewport;
+import imgui.moulberry90.flag.ImDrawListFlags;
+import imgui.moulberry90.flag.ImGuiCol;
+import imgui.moulberry90.flag.ImGuiCond;
+import imgui.moulberry90.flag.ImGuiConfigFlags;
+import imgui.moulberry90.flag.ImGuiDockNodeFlags;
+import imgui.moulberry90.flag.ImGuiKey;
+import imgui.moulberry90.flag.ImGuiPopupFlags;
+import imgui.moulberry90.flag.ImGuiStyleVar;
+import imgui.moulberry90.flag.ImGuiWindowFlags;
 import imgui.moulberry90.internal.ImGuiContext;
-import imgui.moulberry90.type.ImInt;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.LevelLoadingScreen;
@@ -39,24 +70,13 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.ProjectileUtil;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.GameType;
-import net.minecraft.world.phys.*;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.EntityHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec2;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
-import org.jetbrains.annotations.Nullable;
-import org.joml.Matrix4f;
-import org.joml.Quaternionf;
-import org.joml.Vector4f;
-import org.lwjgl.glfw.GLFW;
-
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.ByteBuffer;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.*;
-import java.util.concurrent.TimeUnit;
-import java.util.function.Predicate;
-
-import static org.lwjgl.opengl.GL11.*;
 
 public class ReplayUI {
 
@@ -866,7 +886,8 @@ public class ReplayUI {
                             }
                         }
                     }
-                    if (!isMovingCamera && ReplayUI.getIO().getWantCaptureMouse() && !popupOpenLastFrame && !ImGui.isPopupOpen("", ImGuiPopupFlags.AnyPopup)) {
+                    boolean handleToolInputs = TimelineWindow.hasActiveBlockSelectionTool();
+                    if (!isMovingCamera && (ReplayUI.getIO().getWantCaptureMouse() || handleToolInputs) && !popupOpenLastFrame && !ImGui.isPopupOpen("", ImGuiPopupFlags.AnyPopup)) {
                         handleBasicInputs();
                     }
                 }
@@ -948,18 +969,22 @@ public class ReplayUI {
 
     private static void handleBasicInputs() {
         if (TimelineWindow.hasActiveBlockSelectionTool()) {
+            if (ImGui.isKeyPressed(GLFW.GLFW_KEY_ENTER, false) || ImGui.isKeyPressed(GLFW.GLFW_KEY_KP_ENTER, false)) {
+                TimelineWindow.confirmBlockSelectionTool();
+                return;
+            }
+
             if (ImGui.isKeyPressed(GLFW.GLFW_KEY_DELETE, false) || ImGui.isKeyPressed(GLFW.GLFW_KEY_BACKSPACE, false)) {
                 if (TimelineWindow.handleBlockSelectionDelete()) {
                     return;
                 }
             }
 
-            if (ImGui.isMouseClicked(GLFW.GLFW_MOUSE_BUTTON_LEFT) || ImGui.isMouseClicked(GLFW.GLFW_MOUSE_BUTTON_RIGHT) || ImGui.isMouseClicked(GLFW.GLFW_MOUSE_BUTTON_MIDDLE)) {
+            boolean altDown = ImGui.isKeyDown(GLFW.GLFW_KEY_LEFT_ALT) || ImGui.isKeyDown(GLFW.GLFW_KEY_RIGHT_ALT);
+            if (!altDown && (ImGui.isMouseClicked(GLFW.GLFW_MOUSE_BUTTON_LEFT) || ImGui.isMouseClicked(GLFW.GLFW_MOUSE_BUTTON_MIDDLE))) {
                 int mouseButton;
                 if (ImGui.isMouseClicked(GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
                     mouseButton = GLFW.GLFW_MOUSE_BUTTON_LEFT;
-                } else if (ImGui.isMouseClicked(GLFW.GLFW_MOUSE_BUTTON_RIGHT)) {
-                    mouseButton = GLFW.GLFW_MOUSE_BUTTON_RIGHT;
                 } else {
                     mouseButton = GLFW.GLFW_MOUSE_BUTTON_MIDDLE;
                 }
@@ -969,7 +994,7 @@ public class ReplayUI {
                     if (TimelineWindow.handleBlockSelectionClick(blockHitResult.getBlockPos(), mouseButton)) {
                         return;
                     }
-                } else if (mouseButton != GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+                } else {
                     return;
                 }
             }

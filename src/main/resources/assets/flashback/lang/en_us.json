@@ -444,7 +444,12 @@
 
   "flashback.effect_layer.block": "Block Effect Layer",
   "flashback.effect_layer.selection": "Selection",
+  "flashback.effect_layer.include_air": "Include Air",
+  "flashback.effect.opacity": "Opacity",
+  "flashback.effect.translate": "Translate",
   "flashback.effect.replace": "Replace",
+  "flashback.effect.add_opacity": "Add Opacity Effect",
+  "flashback.effect.add_translate": "Add Translate Effect",
   "flashback.effect.add_replace": "Add Replace Effect",
   "flashback.add_effect_layer": "Add Effect Layer",
   "flashback.delete_effect_layer": "Delete Effect Layer"

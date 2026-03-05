@@ -1,38 +1,52 @@
 package com.moulberry.flashback.editor.ui.windows;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.TreeMap;
+
+import org.jetbrains.annotations.Nullable;
+import org.joml.Vector2f;
+import org.joml.Vector3d;
+import org.lwjgl.glfw.GLFW;
+
 import com.moulberry.flashback.Flashback;
 import com.moulberry.flashback.FlashbackGson;
 import com.moulberry.flashback.Utils;
 import com.moulberry.flashback.editor.CopiedKeyframes;
 import com.moulberry.flashback.editor.SavedTrack;
 import com.moulberry.flashback.editor.SelectedKeyframes;
+import com.moulberry.flashback.editor.ui.ImGuiHelper;
 import com.moulberry.flashback.editor.ui.KeyframeRelativeOffsets;
 import com.moulberry.flashback.editor.ui.ReplayUI;
-import com.moulberry.flashback.keyframe.KeyframeType;
+import com.moulberry.flashback.keyframe.Keyframe;
 import com.moulberry.flashback.keyframe.KeyframeRegistry;
+import com.moulberry.flashback.keyframe.KeyframeType;
 import com.moulberry.flashback.keyframe.handler.MinecraftKeyframeHandler;
+import com.moulberry.flashback.keyframe.impl.CameraKeyframe;
 import com.moulberry.flashback.keyframe.impl.CameraOrbitKeyframe;
+import com.moulberry.flashback.keyframe.impl.TimelapseKeyframe;
+import com.moulberry.flashback.keyframe.interpolation.InterpolationType;
 import com.moulberry.flashback.keyframe.types.CameraKeyframeType;
 import com.moulberry.flashback.keyframe.types.TimelapseKeyframeType;
+import com.moulberry.flashback.playback.ReplayServer;
+import com.moulberry.flashback.record.FlashbackMeta;
 import com.moulberry.flashback.record.ReplayMarker;
 import com.moulberry.flashback.state.EditorScene;
 import com.moulberry.flashback.state.EditorSceneHistoryAction;
 import com.moulberry.flashback.state.EditorSceneHistoryEntry;
-import com.moulberry.flashback.keyframe.impl.TimelapseKeyframe;
-import com.moulberry.flashback.state.EditorStateManager;
 import com.moulberry.flashback.state.EditorState;
-import com.moulberry.flashback.keyframe.Keyframe;
-import com.moulberry.flashback.keyframe.impl.CameraKeyframe;
-import com.moulberry.flashback.keyframe.interpolation.InterpolationType;
-import com.moulberry.flashback.playback.ReplayServer;
-import com.moulberry.flashback.editor.ui.ImGuiHelper;
-import com.moulberry.flashback.record.FlashbackMeta;
+import com.moulberry.flashback.state.EditorStateManager;
 import com.moulberry.flashback.state.KeyframeTrack;
 import com.moulberry.flashback.state.effect.BlockEffect;
 import com.moulberry.flashback.state.effect.BlockEffectLayer;
 import com.moulberry.flashback.state.effect.BlockSelection;
 import com.moulberry.flashback.state.effect.EffectLayer;
+import com.moulberry.flashback.state.effect.OpacityEffect;
 import com.moulberry.flashback.state.effect.ReplaceEffect;
+import com.moulberry.flashback.state.effect.TranslateEffect;
+
 import imgui.moulberry90.ImDrawList;
 import imgui.moulberry90.ImGui;
 import imgui.moulberry90.ImVec4;
@@ -46,7 +60,14 @@ import imgui.moulberry90.flag.ImGuiPopupFlags;
 import imgui.moulberry90.flag.ImGuiStyleVar;
 import imgui.moulberry90.flag.ImGuiWindowFlags;
 import imgui.moulberry90.type.ImString;
-import it.unimi.dsi.fastutil.ints.*;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.ints.IntComparators;
+import it.unimi.dsi.fastutil.ints.IntIterator;
+import it.unimi.dsi.fastutil.ints.IntList;
+import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
+import it.unimi.dsi.fastutil.ints.IntSet;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.InputQuirks;
@@ -55,12 +76,6 @@ import net.minecraft.client.resources.language.I18n;
 import net.minecraft.commands.arguments.EntityAnchorArgument;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.Vec3;
-import org.jetbrains.annotations.Nullable;
-import org.joml.Vector2f;
-import org.joml.Vector3d;
-import org.lwjgl.glfw.GLFW;
-
-import java.util.*;
 
 public class TimelineWindow {
 
@@ -156,6 +171,11 @@ public class TimelineWindow {
         return activeBlockSelectionToolLayer >= 0;
     }
 
+    public static void confirmBlockSelectionTool() {
+        activeBlockSelectionToolLayer = -1;
+        activeBlockSelectionRegion = -1;
+    }
+
     public static boolean handleBlockSelectionDelete() {
         EditorState currentEditorState = EditorStateManager.getCurrent();
         if (currentEditorState == null || activeBlockSelectionToolLayer < 0) {
@@ -181,7 +201,18 @@ public class TimelineWindow {
             BlockSelection selection = blockEffectLayer.getSelection();
             List<BlockSelection.Region> regions = new ArrayList<>(selection.getRegions());
             if (activeBlockSelectionRegion < 0 || activeBlockSelectionRegion >= regions.size()) {
-                return false;
+                if (selection.isEmpty()) {
+                    return false;
+                }
+
+                blockEffectLayer.setSelectionText("");
+                if (blockEffectLayer.selectionEditField != null) {
+                    blockEffectLayer.selectionEditField.set(blockEffectLayer.getSelectionText());
+                }
+
+                activeBlockSelectionRegion = -1;
+                currentEditorState.markDirty();
+                return true;
             }
 
             regions.remove(activeBlockSelectionRegion);
@@ -209,6 +240,8 @@ public class TimelineWindow {
             return false;
         }
 
+        boolean ctrlDown = ReplayUI.isCtrlOrCmdDown();
+
         long stamp = currentEditorState.acquireWrite();
         try {
             EditorScene scene = currentEditorState.getCurrentScene(stamp);
@@ -235,25 +268,22 @@ public class TimelineWindow {
             boolean changed = false;
 
             if (mouseButton == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
-                int clickedRegion = -1;
-                for (int i = 0; i < regions.size(); i++) {
-                    if (regions.get(i).contains(blockPos.getX(), blockPos.getY(), blockPos.getZ())) {
-                        clickedRegion = i;
-                        break;
+                if (ctrlDown) {
+                    String minusEntry = "(" + blockPos.getX() + "," + blockPos.getY() + "," + blockPos.getZ() + ")";
+                    String previous = blockEffectLayer.getSelectionText().trim();
+                    if (previous.isEmpty()) {
+                        blockEffectLayer.setSelectionText("* - " + minusEntry);
+                    } else {
+                        blockEffectLayer.setSelectionText(previous + " - " + minusEntry);
                     }
-                }
-
-                if (clickedRegion >= 0) {
-                    activeBlockSelectionRegion = clickedRegion;
+                    activeBlockSelectionRegion = -1;
+                    changed = true;
                 } else {
+                    regions.clear();
                     regions.add(new BlockSelection.Region(blockPos.getX(), blockPos.getY(), blockPos.getZ(), blockPos.getX(), blockPos.getY(), blockPos.getZ()));
-                    activeBlockSelectionRegion = regions.size() - 1;
+                    activeBlockSelectionRegion = 0;
                     changed = true;
                 }
-            } else if (mouseButton == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
-                regions.add(new BlockSelection.Region(blockPos.getX(), blockPos.getY(), blockPos.getZ(), blockPos.getX(), blockPos.getY(), blockPos.getZ()));
-                activeBlockSelectionRegion = regions.size() - 1;
-                changed = true;
             } else if (mouseButton == GLFW.GLFW_MOUSE_BUTTON_MIDDLE) {
                 if (activeBlockSelectionRegion < 0 || activeBlockSelectionRegion >= regions.size()) {
                     regions.add(new BlockSelection.Region(blockPos.getX(), blockPos.getY(), blockPos.getZ(), blockPos.getX(), blockPos.getY(), blockPos.getZ()));
@@ -277,7 +307,9 @@ public class TimelineWindow {
                 return mouseButton == GLFW.GLFW_MOUSE_BUTTON_LEFT;
             }
 
-            blockEffectLayer.setSelectionText(BlockSelection.toSelectionString(regions));
+            if (mouseButton == GLFW.GLFW_MOUSE_BUTTON_MIDDLE || (mouseButton == GLFW.GLFW_MOUSE_BUTTON_LEFT && !ctrlDown)) {
+                blockEffectLayer.setSelectionText(BlockSelection.toSelectionString(regions));
+            }
             if (blockEffectLayer.selectionEditField != null) {
                 blockEffectLayer.selectionEditField.set(blockEffectLayer.getSelectionText());
             }
@@ -2364,6 +2396,26 @@ public class TimelineWindow {
             // Right-click context menu
             if (ImGui.beginPopupContextItem("##EffectLayerContext")) {
                 if (layer instanceof BlockEffectLayer blockEffectLayer) {
+                    if (ImGui.menuItem(I18n.get("flashback.effect.add_opacity"))) {
+                        upgradeToSceneWrite();
+                        EffectLayer oldCopy = layer.copy();
+                        blockEffectLayer.effects.add(new OpacityEffect());
+                        EffectLayer newCopy = layer.copy();
+                        List<EditorSceneHistoryAction> undo = List.of(new EditorSceneHistoryAction.SetEffectLayer(layerIndex, oldCopy));
+                        List<EditorSceneHistoryAction> redo = List.of(new EditorSceneHistoryAction.SetEffectLayer(layerIndex, newCopy));
+                        editorScene.push(new EditorSceneHistoryEntry(undo, redo, I18n.get("flashback.effect.add_opacity")));
+                        editorState.markDirty();
+                    }
+                    if (ImGui.menuItem(I18n.get("flashback.effect.add_translate"))) {
+                        upgradeToSceneWrite();
+                        EffectLayer oldCopy = layer.copy();
+                        blockEffectLayer.effects.add(new TranslateEffect());
+                        EffectLayer newCopy = layer.copy();
+                        List<EditorSceneHistoryAction> undo = List.of(new EditorSceneHistoryAction.SetEffectLayer(layerIndex, oldCopy));
+                        List<EditorSceneHistoryAction> redo = List.of(new EditorSceneHistoryAction.SetEffectLayer(layerIndex, newCopy));
+                        editorScene.push(new EditorSceneHistoryEntry(undo, redo, I18n.get("flashback.effect.add_translate")));
+                        editorState.markDirty();
+                    }
                     if (ImGui.menuItem(I18n.get("flashback.effect.add_replace"))) {
                         upgradeToSceneWrite();
                         EffectLayer oldCopy = layer.copy();
@@ -2401,7 +2453,7 @@ public class TimelineWindow {
                     }
                 }
                 if (ImGui.isItemHovered()) {
-                    ImGui.setTooltip("Use world clicks: left select/create, right add, middle extend, delete remove");
+                    ImGui.setTooltip("LMB new, MMB extend, CTRL+LMB minus, ENTER confirm, ALT navigate");
                 }
                 ImGui.sameLine();
 
@@ -2412,12 +2464,24 @@ public class TimelineWindow {
                 if (ImGui.inputText("##Selection_" + layerIndex, blockEffectLayer.selectionEditField)) {
                     upgradeToSceneWrite();
                     blockEffectLayer.setSelectionText(ImGuiHelper.getString(blockEffectLayer.selectionEditField));
-                    if ("*".equals(blockEffectLayer.getSelectionText().trim())) {
-                        activeBlockSelectionRegion = -1;
-                    }
+                    BlockSelection parsedSelection = blockEffectLayer.getSelection();
+                    activeBlockSelectionRegion = parsedSelection.getRegions().isEmpty() ? -1 : Math.min(activeBlockSelectionRegion, parsedSelection.getRegions().size() - 1);
                     editorState.markDirty();
                 }
                 ImGui.popItemWidth();
+
+                ImGui.setCursorPosX(24);
+                boolean includeAir = blockEffectLayer.isIncludeAir();
+                if (ImGui.checkbox(I18n.get("flashback.effect_layer.include_air") + "##IncludeAir_" + layerIndex, includeAir)) {
+                    upgradeToSceneWrite();
+                    EffectLayer oldCopy = layer.copy();
+                    blockEffectLayer.setIncludeAir(!includeAir);
+                    EffectLayer newCopy = layer.copy();
+                    List<EditorSceneHistoryAction> undo = List.of(new EditorSceneHistoryAction.SetEffectLayer(layerIndex, oldCopy));
+                    List<EditorSceneHistoryAction> redo = List.of(new EditorSceneHistoryAction.SetEffectLayer(layerIndex, newCopy));
+                    editorScene.push(new EditorSceneHistoryEntry(undo, redo, "Toggle include air"));
+                    editorState.markDirty();
+                }
 
                 int effectToDelete = -1;
                 for (int effectIndex = 0; effectIndex < blockEffectLayer.effects.size(); effectIndex++) {
@@ -2457,6 +2521,51 @@ public class TimelineWindow {
                             List<EditorSceneHistoryAction> undo = List.of(new EditorSceneHistoryAction.SetEffectLayer(layerIndex, oldCopy));
                             List<EditorSceneHistoryAction> redo = List.of(new EditorSceneHistoryAction.SetEffectLayer(layerIndex, newCopy));
                             editorScene.push(new EditorSceneHistoryEntry(undo, redo, "Change replace block"));
+                            editorState.markDirty();
+                        }
+                        ImGui.popItemWidth();
+
+                        ImGui.setCursorPosX(48);
+                        ImGui.pushItemWidth(220);
+                        if (replaceEffect.filterEditField == null) {
+                            replaceEffect.filterEditField = ImGuiHelper.createResizableImString(replaceEffect.getFilterText());
+                        }
+                        if (ImGui.inputText("##ReplaceFilter", replaceEffect.filterEditField)) {
+                            upgradeToSceneWrite();
+                            EffectLayer oldCopy = layer.copy();
+                            replaceEffect.setFilterText(ImGuiHelper.getString(replaceEffect.filterEditField));
+                            EffectLayer newCopy = layer.copy();
+                            List<EditorSceneHistoryAction> undo = List.of(new EditorSceneHistoryAction.SetEffectLayer(layerIndex, oldCopy));
+                            List<EditorSceneHistoryAction> redo = List.of(new EditorSceneHistoryAction.SetEffectLayer(layerIndex, newCopy));
+                            editorScene.push(new EditorSceneHistoryEntry(undo, redo, "Change replace filter"));
+                            editorState.markDirty();
+                        }
+                        ImGui.popItemWidth();
+                    } else if (effect instanceof OpacityEffect opacityEffect) {
+                        ImGui.sameLine();
+                        float[] value = new float[]{opacityEffect.getOpacity()};
+                        if (ImGui.sliderFloat("##Opacity", value, 0.0f, 1.0f, "%.2f")) {
+                            upgradeToSceneWrite();
+                            EffectLayer oldCopy = layer.copy();
+                            opacityEffect.setOpacity(value[0]);
+                            EffectLayer newCopy = layer.copy();
+                            List<EditorSceneHistoryAction> undo = List.of(new EditorSceneHistoryAction.SetEffectLayer(layerIndex, oldCopy));
+                            List<EditorSceneHistoryAction> redo = List.of(new EditorSceneHistoryAction.SetEffectLayer(layerIndex, newCopy));
+                            editorScene.push(new EditorSceneHistoryEntry(undo, redo, "Change opacity"));
+                            editorState.markDirty();
+                        }
+                    } else if (effect instanceof TranslateEffect translateEffect) {
+                        ImGui.sameLine();
+                        float[] value = new float[]{translateEffect.getX(), translateEffect.getY(), translateEffect.getZ()};
+                        ImGui.pushItemWidth(200);
+                        if (ImGuiHelper.inputFloat("##Translate", value)) {
+                            upgradeToSceneWrite();
+                            EffectLayer oldCopy = layer.copy();
+                            translateEffect.set(value[0], value[1], value[2]);
+                            EffectLayer newCopy = layer.copy();
+                            List<EditorSceneHistoryAction> undo = List.of(new EditorSceneHistoryAction.SetEffectLayer(layerIndex, oldCopy));
+                            List<EditorSceneHistoryAction> redo = List.of(new EditorSceneHistoryAction.SetEffectLayer(layerIndex, newCopy));
+                            editorScene.push(new EditorSceneHistoryEntry(undo, redo, "Change translation"));
                             editorState.markDirty();
                         }
                         ImGui.popItemWidth();

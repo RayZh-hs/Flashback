@@ -96,50 +96,44 @@ public class BlockEffectManager {
     private void applyReplaceEffect(ServerLevel level, BlockSelection selection, ReplaceEffect replaceEffect) {
         BlockState replacementState = replaceEffect.getBlockState();
 
-        if (selection.isAllBlocks()) {
-            int minY = level.getMinSectionY() << 4;
-            int maxY = (level.getMaxSectionY() << 4) + 16;
+        int minY = level.getMinSectionY() << 4;
+        int maxY = (level.getMaxSectionY() << 4) + 16;
 
-            for (Object holder : getChunkHolders(level)) {
-                LevelChunk chunk = resolveChunkFromHolder(holder);
-                if (chunk == null) {
-                    continue;
-                }
-
-                int minX = chunk.getPos().getMinBlockX();
-                int minZ = chunk.getPos().getMinBlockZ();
-                BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
-
-                for (int x = minX; x < minX + 16; x++) {
-                    for (int y = minY; y < maxY; y++) {
-                        for (int z = minZ; z < minZ + 16; z++) {
-                            mutable.set(x, y, z);
-                            applyReplacementAt(level, mutable, replacementState);
-                        }
-                    }
-                }
+        BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
+        for (Object holder : getChunkHolders(level)) {
+            LevelChunk chunk = resolveChunkFromHolder(holder);
+            if (chunk == null) {
+                continue;
             }
 
-            return;
-        }
+            int minX = chunk.getPos().getMinBlockX();
+            int minZ = chunk.getPos().getMinBlockZ();
 
-        for (BlockSelection.Region region : selection.getRegions()) {
-            for (int x = region.minX(); x <= region.maxX(); x++) {
-                for (int y = region.minY(); y <= region.maxY(); y++) {
-                    for (int z = region.minZ(); z <= region.maxZ(); z++) {
-                        applyReplacementAt(level, new BlockPos(x, y, z), replacementState);
+            for (int x = minX; x < minX + 16; x++) {
+                for (int y = minY; y < maxY; y++) {
+                    for (int z = minZ; z < minZ + 16; z++) {
+                        if (!selection.matches(level, x, y, z)) {
+                            continue;
+                        }
+
+                        mutable.set(x, y, z);
+                        BlockState currentState = level.getBlockState(mutable);
+                        if (!replaceEffect.matchesFilter(currentState)) {
+                            continue;
+                        }
+
+                        applyReplacementAt(level, mutable, currentState, replacementState);
                     }
                 }
             }
         }
     }
 
-    private void applyReplacementAt(ServerLevel level, BlockPos pos, BlockState replacementState) {
+    private void applyReplacementAt(ServerLevel level, BlockPos pos, BlockState currentState, BlockState replacementState) {
         BlockPos immutablePos = pos.immutable();
 
         // Only save original if we haven't already saved it
         if (!originalStates.containsKey(immutablePos)) {
-            BlockState currentState = level.getBlockState(immutablePos);
             originalStates.put(immutablePos, currentState);
         }
 

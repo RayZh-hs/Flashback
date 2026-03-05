@@ -6,13 +6,15 @@ A selection specifies a section of objects in the world. A selection maps one-to
 
 Selection Text Syntax:
 
-- `x1,y1,z1..x2,y2,z2`: A cuboid region with two opposite corners at (x1, y1, z1) and (x2, y2, z2).
-- `x,y,z`: A single block region at (x, y, z).
+- `(x1,y1,z1..x2,y2,z2)`: A cuboid region with two opposite corners at (x1, y1, z1) and (x2, y2, z2).
+- `(x,y,z)`: A single block region at (x, y, z).
 - `selection1 + selection2 + ...`: A union of multiple selections. By definition, regions can be either a cuboid or single block.
 - `selection1 - selection2`: A difference of selections.
 - `*`: The entire world (all the blocks).
 - `selection[filter]`: A filtered selection, where `filter` is a block filter.
 - `(selection)`: A parenthesized selection, used to specify the order of operations.
+
+Atomic regions must be parenthesized. This avoids ambiguity between `-` as a coordinate sign and `-` as the selection difference operator.
 
 Order of operations: parentheses, filters, union/difference.
 
