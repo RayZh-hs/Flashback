@@ -198,7 +198,7 @@ public class TimelineWindow {
                 return false;
             }
 
-            BlockSelection selection = blockEffectLayer.getSelection();
+            BlockSelection selection = BlockSelection.parse(blockEffectLayer.getSelectionText());
             List<BlockSelection.Region> regions = new ArrayList<>(selection.getRegions());
             if (activeBlockSelectionRegion < 0 || activeBlockSelectionRegion >= regions.size()) {
                 if (selection.isEmpty()) {
@@ -258,7 +258,7 @@ public class TimelineWindow {
                 return false;
             }
 
-            BlockSelection selection = blockEffectLayer.getSelection();
+            BlockSelection selection = BlockSelection.parse(blockEffectLayer.getSelectionText());
             if (selection.isAllBlocks()) {
                 activeBlockSelectionRegion = -1;
                 return false;
@@ -279,9 +279,8 @@ public class TimelineWindow {
                     activeBlockSelectionRegion = -1;
                     changed = true;
                 } else {
-                    regions.clear();
                     regions.add(new BlockSelection.Region(blockPos.getX(), blockPos.getY(), blockPos.getZ(), blockPos.getX(), blockPos.getY(), blockPos.getZ()));
-                    activeBlockSelectionRegion = 0;
+                    activeBlockSelectionRegion = regions.size() - 1;
                     changed = true;
                 }
             } else if (mouseButton == GLFW.GLFW_MOUSE_BUTTON_MIDDLE) {
@@ -2448,12 +2447,12 @@ public class TimelineWindow {
                         activeBlockSelectionRegion = -1;
                     } else {
                         activeBlockSelectionToolLayer = layerIndex;
-                        BlockSelection selection = blockEffectLayer.getSelection();
-                        activeBlockSelectionRegion = selection.getRegions().isEmpty() ? -1 : 0;
+                        BlockSelection selection = BlockSelection.parse(blockEffectLayer.getSelectionText());
+                        activeBlockSelectionRegion = selection.getRegions().isEmpty() ? -1 : selection.getRegions().size() - 1;
                     }
                 }
                 if (ImGui.isItemHovered()) {
-                    ImGui.setTooltip("LMB new, MMB extend, CTRL+LMB minus, ENTER confirm, ALT navigate");
+                    ImGui.setTooltip("LMB append, MMB extend, CTRL+LMB minus, ENTER confirm, ALT navigate");
                 }
                 ImGui.sameLine();
 
@@ -2463,9 +2462,16 @@ public class TimelineWindow {
                 }
                 if (ImGui.inputText("##Selection_" + layerIndex, blockEffectLayer.selectionEditField)) {
                     upgradeToSceneWrite();
-                    blockEffectLayer.setSelectionText(ImGuiHelper.getString(blockEffectLayer.selectionEditField));
-                    BlockSelection parsedSelection = blockEffectLayer.getSelection();
-                    activeBlockSelectionRegion = parsedSelection.getRegions().isEmpty() ? -1 : Math.min(activeBlockSelectionRegion, parsedSelection.getRegions().size() - 1);
+                    String selectionText = ImGuiHelper.getString(blockEffectLayer.selectionEditField);
+                    blockEffectLayer.setSelectionText(selectionText);
+                    BlockSelection parsedSelection = BlockSelection.parse(selectionText);
+                    if (parsedSelection.getRegions().isEmpty()) {
+                        activeBlockSelectionRegion = -1;
+                    } else if (activeBlockSelectionRegion < 0) {
+                        activeBlockSelectionRegion = parsedSelection.getRegions().size() - 1;
+                    } else {
+                        activeBlockSelectionRegion = Math.min(activeBlockSelectionRegion, parsedSelection.getRegions().size() - 1);
+                    }
                     editorState.markDirty();
                 }
                 ImGui.popItemWidth();
