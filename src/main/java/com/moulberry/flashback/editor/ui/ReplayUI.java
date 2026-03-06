@@ -336,6 +336,8 @@ public class ReplayUI {
         builder.addChar('\ue55f');
         builder.addChar('\uea44');
         builder.addChar('\ue3a1');
+        builder.addChar('\ue5cc');
+        builder.addChar('\ue5cf');
         return builder.buildRanges();
     }
 
