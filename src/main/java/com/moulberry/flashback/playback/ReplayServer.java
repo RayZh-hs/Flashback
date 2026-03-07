@@ -818,6 +818,10 @@ public class ReplayServer extends IntegratedServer {
         return EditorStateManager.get(this.metadata.replayIdentifier);
     }
 
+    public BlockEffectManager getBlockEffectManager() {
+        return this.blockEffectManager;
+    }
+
     @Override
     public boolean isReady() {
         return super.isReady() && this.initializedWithSnapshot;
@@ -1118,7 +1122,7 @@ public class ReplayServer extends IntegratedServer {
 
         // Apply effect layers (Replace blocks, etc.)
         for (ServerLevel level : this.getAllLevels()) {
-            this.blockEffectManager.applyEffects(level, this.getEditorState());
+            this.blockEffectManager.applyEffects(level, this.getEditorState(), this.getReplayTick());
         }
 
         // Teleport entities

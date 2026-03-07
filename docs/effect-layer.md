@@ -19,6 +19,10 @@ Evaluation order is:
 
 Effects can be applied to the selected blocks as a stack. The effects include:
 - **Opacity**: Adjusting the opacity of the selected blocks. Type: Float, Range: [0, 1], Default: 1.
+  - Rendering uses linear interpolation between the full render and the render where the selected blocks are replaced by air.
+  - When multiple opacity effects apply to the same block, their values are multiplied.
+  - Rendering is grouped by final opacity bucket so only one extra pass is needed per distinct opacity value below `1`.
+  - The editor currently uses the same linear interpolation path. A future preview mode can replace hidden blocks with light grey stained glass for faster editing.
 - **Translate**: Translating the selected blocks by a specified vector. Type: Vector3, Default: (0, 0, 0).
 - **Replace**: Replacing the selected blocks with a specified block type. Type: Block, Default: Air.
   - Optional field `filter`: A block filter that specifies which blocks to replace. If not specified, all blocks in the selection will be replaced.

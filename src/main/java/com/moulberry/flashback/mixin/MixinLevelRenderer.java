@@ -13,10 +13,12 @@ import com.mojang.blaze3d.textures.GpuTextureView;
 import com.mojang.blaze3d.textures.TextureFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.moulberry.flashback.Flashback;
+import com.moulberry.flashback.editor.ui.ReplayUI;
+import com.moulberry.flashback.exporting.PerfectFrames;
 import com.moulberry.flashback.playback.ReplayServer;
 import com.moulberry.flashback.state.EditorState;
 import com.moulberry.flashback.state.EditorStateManager;
-import com.moulberry.flashback.editor.ui.ReplayUI;
+import com.moulberry.flashback.visuals.OpacityEffectRenderer;
 import com.moulberry.flashback.visuals.ReplayVisuals;
 import com.moulberry.flashback.visuals.ShaderManager;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -28,7 +30,9 @@ import net.minecraft.client.Options;
 import net.minecraft.client.renderer.*;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayerGroup;
 import net.minecraft.client.renderer.chunk.ChunkSectionsToRender;
+import net.minecraft.client.renderer.chunk.RenderRegionCache;
 import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
+import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
 import net.minecraft.client.renderer.entity.state.AvatarRenderState;
 import net.minecraft.client.renderer.entity.state.EntityRenderState;
@@ -52,19 +56,11 @@ import java.util.OptionalInt;
 public abstract class MixinLevelRenderer {
 
     @Shadow @Final public ObjectArrayList<SectionRenderDispatcher.RenderSection> visibleSections;
-
     @Shadow private @Nullable SectionRenderDispatcher sectionRenderDispatcher;
-
     @Shadow @Final public SectionOcclusionGraph sectionOcclusionGraph;
-
-    @Shadow
-    private int ticks;
-
+    @Shadow private int ticks;
     @Shadow @Final private LevelTargetBundle targets;
-
-    @Shadow
-    @Final
-    private ParticlesRenderState particlesRenderState;
+    @Shadow @Final private ParticlesRenderState particlesRenderState;
 
     @Inject(method = "tick", at = @At("HEAD"))
     public void tick(CallbackInfo ci) {
@@ -82,16 +78,16 @@ public abstract class MixinLevelRenderer {
         return original.call(instance);
     }
 
-    @Inject(method = "renderLevel", at = @At("HEAD"))
+    @Inject(method = "renderLevel", at = @At("HEAD"), cancellable = true)
     public void renderLevel(GraphicsResourceAllocator graphicsResourceAllocator, DeltaTracker deltaTracker, boolean bl, Camera camera,
-            Matrix4f matrix4f, Matrix4f matrix4f2, Matrix4f projection, GpuBufferSlice gpuBufferSlice, Vector4f clearColour, boolean bl2, CallbackInfo ci) {
+                            Matrix4f matrix4f, Matrix4f matrix4f2, Matrix4f projection, GpuBufferSlice gpuBufferSlice, Vector4f clearColour,
+                            boolean bl2, CallbackInfo ci) {
         ReplayUI.lastProjectionMatrix = projection;
         ReplayUI.lastViewQuaternion = camera.rotation();
 
         EditorState editorState = EditorStateManager.getCurrent();
         if (editorState != null) {
             ReplayVisuals visuals = editorState.replayVisuals;
-
             if (!visuals.renderSky) {
                 if (Flashback.isExporting() && Flashback.EXPORT_JOB.getSettings().transparent()) {
                     clearColour.set(0f, 0f, 0f, 0f);
@@ -100,6 +96,11 @@ public abstract class MixinLevelRenderer {
                     clearColour.set(skyColour[0], skyColour[1], skyColour[2], 1f);
                 }
             }
+        }
+
+        if (OpacityEffectRenderer.renderWithOpacityPasses((LevelRenderer) (Object) this, graphicsResourceAllocator, deltaTracker,
+            bl, camera, matrix4f, matrix4f2, projection, gpuBufferSlice, clearColour, bl2)) {
+            ci.cancel();
         }
     }
 
@@ -123,20 +124,16 @@ public abstract class MixinLevelRenderer {
     @Inject(method = "renderBlockDestroyAnimation", at = @At("HEAD"), cancellable = true, require = 0)
     public void renderBlockDestroyAnimation(CallbackInfo ci) {
         EditorState editorState = EditorStateManager.getCurrent();
-        if (editorState != null) {
-            if (!editorState.replayVisuals.renderBlocks) {
-                ci.cancel();
-            }
+        if (editorState != null && !editorState.replayVisuals.renderBlocks) {
+            ci.cancel();
         }
     }
 
     @WrapOperation(method = "method_62214", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/chunk/ChunkSectionsToRender;renderGroup(Lnet/minecraft/client/renderer/chunk/ChunkSectionLayerGroup;)V"))
     public void method_62214_renderChunkGroup(ChunkSectionsToRender instance, ChunkSectionLayerGroup chunkSectionLayerGroup, Operation<Void> original) {
         EditorState editorState = EditorStateManager.getCurrent();
-        if (editorState != null) {
-            if (!editorState.replayVisuals.renderBlocks) {
-                return;
-            }
+        if (editorState != null && !editorState.replayVisuals.renderBlocks) {
+            return;
         }
 
         original.call(instance, chunkSectionLayerGroup);
@@ -194,9 +191,8 @@ public abstract class MixinLevelRenderer {
         EditorState editorState = EditorStateManager.getCurrent();
         if (editorState != null && !editorState.replayVisuals.renderSky) {
             return CloudStatus.OFF;
-        } else {
-            return original.call(instance);
         }
+        return original.call(instance);
     }
 
     @Inject(method = "addParticlesPass", at = @At("HEAD"), cancellable = true)
@@ -216,33 +212,34 @@ public abstract class MixinLevelRenderer {
         }
     }
 
-//    @WrapOperation(method = "renderLevel", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/LevelRenderer;setupRender(Lnet/minecraft/client/Camera;Lnet/minecraft/client/renderer/culling/Frustum;ZZ)V"), require = 0)
-//    public void setupRender(LevelRenderer instance, Camera camera, Frustum frustum, boolean capturedFrustum, boolean isSpectator, Operation<Void> original) {
-//        if (PerfectFrames.isEnabled()) {
-//            boolean doCompile = true;
-//            while (doCompile) {
-//                doCompile = false;
-//
-//                int before = this.visibleSections.size();
-//                original.call(instance, camera, frustum, capturedFrustum, isSpectator);
-//                if (this.visibleSections.size() != before) {
-//                    doCompile = true;
-//                }
-//
-//                RenderRegionCache renderRegionCache = new RenderRegionCache();
-//                for (SectionRenderDispatcher.RenderSection renderSection : this.visibleSections) {
-//                    if (renderSection.isDirty()) {
-//                        this.sectionRenderDispatcher.rebuildSectionSync(renderSection, renderRegionCache);
-//                        renderSection.setNotDirty();
-//                        doCompile = true;
-//                    }
-//                }
-//
-//                this.sectionRenderDispatcher.uploadAllPendingUploads();
-//            }
-//        } else {
-//            original.call(instance, camera, frustum, capturedFrustum, isSpectator);
-//        }
-//    }
+    @WrapOperation(method = "renderLevel", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/LevelRenderer;setupRender(Lnet/minecraft/client/Camera;Lnet/minecraft/client/renderer/culling/Frustum;ZZ)V"), require = 0)
+    public void setupRender(LevelRenderer instance, Camera camera, Frustum frustum, boolean capturedFrustum, boolean isSpectator, Operation<Void> original) {
+        if (PerfectFrames.isEnabled() || OpacityEffectRenderer.shouldForceSynchronousChunkRebuilds()) {
+            boolean doCompile = true;
+            while (doCompile) {
+                doCompile = false;
 
+                int before = this.visibleSections.size();
+                original.call(instance, camera, frustum, capturedFrustum, isSpectator);
+                if (this.visibleSections.size() != before) {
+                    doCompile = true;
+                }
+
+                RenderRegionCache renderRegionCache = new RenderRegionCache();
+                if (this.sectionRenderDispatcher != null) {
+                    for (SectionRenderDispatcher.RenderSection renderSection : this.visibleSections) {
+                        if (renderSection.isDirty()) {
+                            this.sectionRenderDispatcher.rebuildSectionSync(renderSection, renderRegionCache);
+                            renderSection.setNotDirty();
+                            doCompile = true;
+                        }
+                    }
+
+                    this.sectionRenderDispatcher.uploadAllPendingUploads();
+                }
+            }
+        } else {
+            original.call(instance, camera, frustum, capturedFrustum, isSpectator);
+        }
+    }
 }

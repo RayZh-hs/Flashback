@@ -10,6 +10,7 @@ import com.mojang.blaze3d.resource.ResourceHandle;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.moulberry.flashback.Flashback;
+import com.moulberry.flashback.visuals.OpacityEffectRenderer;
 import com.moulberry.flashback.visuals.WorldRenderHook;
 import net.minecraft.client.Camera;
 import net.minecraft.client.DeltaTracker;
@@ -41,7 +42,7 @@ public class MixinLevelRenderer {
     public void renderLevelPost(GraphicsResourceAllocator graphicsResourceAllocator, DeltaTracker deltaTracker, boolean renderBlockOutline, Camera camera, Matrix4f matrix4f,
                                 Matrix4f matrix4f2, Matrix4f matrix4f3, GpuBufferSlice gpuBufferSlice, Vector4f vector4f, boolean bl2, CallbackInfo ci,
                                 @Local FrameGraphBuilder frameGraphBuilder) {
-        if (!Flashback.isInReplay()) {
+        if (!Flashback.isInReplay() || !OpacityEffectRenderer.shouldRenderWorldHook()) {
             return;
         }
 
